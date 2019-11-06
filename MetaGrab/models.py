@@ -6,14 +6,14 @@ from django.utils.timezone import now
 
 # Create your models here.
 class Developer(models.Model):
-    name = models.CharField(max_length = 20)
+    name = models.CharField(max_length = 100)
     created = models.DateTimeField(default=now, editable=False)
 
     def __str__(self):
         return self.name
 
 class Genre(models.Model):
-    name = models.CharField(max_length = 20)
+    name = models.CharField(max_length = 100)
     created = models.DateTimeField(default=now, editable=False)
 
     def __str__(self):
@@ -21,7 +21,7 @@ class Genre(models.Model):
 
 class Game(models.Model):
     created = models.DateTimeField(default=now, editable=False)
-    name = models.CharField(max_length = 20)
+    name = models.CharField(max_length = 100)
     release_date = models.DateField()
     developer = models.ForeignKey(Developer, on_delete=models.CASCADE)
     genre = models.ForeignKey(Genre, on_delete=models.CASCADE)
@@ -45,7 +45,7 @@ class Votable(models.Model):
     author = models.ForeignKey(User, on_delete=models.PROTECT)
     upvotes = models.IntegerField(default=0)
     downvotes = models.IntegerField(default=0)
-    content = models.CharField(max_length = 200)
+    content = models.TextField(max_length = 40000)
 
 class Thread(Votable):
     TYPE_UPDATE = 'update'
@@ -62,7 +62,7 @@ class Thread(Votable):
         choices=TYPE_CHOICES,
         default=TYPE_DISCUSSION,
     )
-    title = models.CharField(max_length = 20)
+    title = models.TextField(max_length = 200)
     forum = models.ForeignKey(Forum, on_delete=models.CASCADE)
     num_comments = models.IntegerField(default = 0)
 
@@ -116,7 +116,6 @@ def create_comment(sender, instance, created, **kwargs):
     if created:
         parent_thread = instance.parent_thread
         parent_thread.num_comments += 1
-        print("I was created", parent_thread, " test <-- parent thread")
         parent_thread.save()
 
 @receiver(post_save, sender=CommentSecondary)
