@@ -1,6 +1,6 @@
-from .models import Game, Genre, Developer, Forum, Thread, User, UserProfile, Group, Comment, CommentSecondary
+from .models import Game, Genre, Developer, Forum, Thread, User, UserProfile, Group, Comment
 from .serializers import GameSerializer, GenreSerializer, ThreadSerializer, ForumSerializer, DeveloperSerializer, \
-    UserSerializer, UserProfileSerializer, GroupSerializer, CommentSerializer, CommentSecondarySerializer
+    UserSerializer, UserProfileSerializer, GroupSerializer, CommentSerializer
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -10,7 +10,7 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.views import TokenObtainPairView
 from django.db import models, connection
 
-from . import redis_helpers
+from . import redis_helpers, app_business_logic
 import json, datetime
 
 # redis
@@ -111,13 +111,13 @@ class ThreadViewSet(viewsets.ModelViewSet):
 
         new_thread = Thread(flair=flair, title=title, content=content, author=user, forum=forum)
         new_thread.save()
-
-        serializer = self.get_serializer(new_thread, many=False)
-
         redis_thread_object = redis_helpers.transform_thread_to_redis_object(new_thread)
+
         conn = get_redis_connection('default')
         conn.hmset("thread:" + str(new_thread.id), redis_thread_object)
         conn.zadd("game:" + str(new_thread.forum.id) + ".ranking", {"thread:" + str(new_thread.id): redis_helpers.hot(redis_thread_object["upvotes"], redis_thread_object["downvotes"], redis_helpers.epoch_seconds(redis_thread_object["created"]))})
+
+        serializer = self.get_serializer(new_thread, many=False)
         
         return Response(serializer.data)
 
@@ -173,7 +173,6 @@ class CommentViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['post'])
     def post_comment_by_thread_id(self, request, pk=None):
-
         thread_id = int(request.GET['thread_id'])
         parent_thread = Thread.objects.get(pk=thread_id)
 
@@ -183,24 +182,16 @@ class CommentViewSet(viewsets.ModelViewSet):
         user_id = request.user.id
 
         user = User.objects.get(pk=user_id)
-
-        new_comment = Comment(parent_thread=parent_thread, content=content, author=user)
+        new_comment = Comment(parent_thread=parent_thread, parent_post=None, content=content, author=user)
         new_comment.save()
-
-        serializer = CommentSerializer(new_comment, many=False)
-
         redis_comment_object = redis_helpers.transform_comment_to_redis_object(new_comment)
         thread = new_comment.parent_thread
         conn = get_redis_connection('default')
         conn.hmset("comment:" + str(new_comment.id), redis_comment_object)
         conn.zadd("thread:" + str(thread_id) + ".ranking", {"comment:" + str(new_comment.id): redis_helpers.epoch_seconds(redis_comment_object["created"])})
         
+        serializer = CommentSerializer(new_comment, many=False)
         return Response(serializer.data)
-
-
-class CommentSecondaryViewSet(viewsets.ModelViewSet):
-    queryset = CommentSecondary.objects.all()
-    serializer_class = CommentSecondarySerializer
 
     @action(detail=False, methods=['get'])
     def get_comments_by_primary_comment_id(self, request, pk=None):
@@ -216,7 +207,6 @@ class CommentSecondaryViewSet(viewsets.ModelViewSet):
             response = conn.hgetall(encoded_comment.decode())
             serializer.append(redis_helpers.redis_comment_serializer(response))
 
-        print(serializer)
         return Response(serializer)
         # secondary_comments = primary_comment.commentsecondary_set.all()
         # serializer = CommentSecondarySerializer(secondary_comments, many=True)
@@ -235,20 +225,18 @@ class CommentSecondaryViewSet(viewsets.ModelViewSet):
 
         user = User.objects.get(pk=user_id)
 
-        new_secondary_comment = CommentSecondary(parent_post=primary_comment, content=content, author=user)
+        new_secondary_comment = Comment(parent_thread=None, parent_post=primary_comment, content=content, author=user)
         new_secondary_comment.save()
-        serializer = CommentSecondarySerializer(new_secondary_comment, many=False)
 
         parent_comment = new_secondary_comment.parent_post
-        redis_comment_object = redis_helpers.transform_sec_comment_to_redis_object(new_secondary_comment)
-
-        print("what's this object: ", redis_comment_object)
+        redis_comment_object = redis_helpers.transform_comment_to_redis_object(new_secondary_comment)
 
         conn = get_redis_connection('default')
-        conn.hmset("comment_secondary:" + str(new_secondary_comment.id), redis_comment_object)
+        conn.hmset("comment:" + str(new_secondary_comment.id), redis_comment_object)
         conn.zadd("comment:" + str(parent_comment.id) + ".ranking",
-                      {"comment_secondary:" + str(new_secondary_comment.id): redis_helpers.epoch_seconds(redis_comment_object["created"])})
-
+                      {"comment:" + str(new_secondary_comment.id): redis_helpers.epoch_seconds(redis_comment_object["created"])})
+        
+        serializer = CommentSerializer(new_secondary_comment, many=False)
         return Response(serializer.data)
 
 
@@ -273,10 +261,10 @@ class RedisServices(viewsets.GenericViewSet):
     @action(detail=False, methods=['get'])
     def migrate_to_redis(self, request, pk=None):
         conn = get_redis_connection('default')
+        conn.flushall()
         games = Game.objects.all()
         threads = Thread.objects.all()
         comments = Comment.objects.all()
-        comments_secondary = CommentSecondary.objects.all()
 
         for game in games:
             game_id = game.id
@@ -295,20 +283,14 @@ class RedisServices(viewsets.GenericViewSet):
         for comment in comments:
             comment_id = comment.id
 
-            print("comment: ", comment_id, comment)
-
             redis_comment_object = redis_helpers.transform_comment_to_redis_object(comment)
-            print("thread:" + str(thread.id) + ".ranking")
             conn.hmset("comment:" + str(comment.id), redis_comment_object)
-            conn.zadd("thread:" + str(thread.id) + ".ranking", {"comment:" + str(comment.id): redis_helpers.epoch_seconds(redis_comment_object["created"])})
 
-        for comment in comments_secondary:
-            comment_id = comment.id
-
-            redis_comment_object = redis_helpers.transform_sec_comment_to_redis_object(comment)
-            conn.hmset("comment_secondary:" + str(comment.id), redis_comment_object)
-            conn.zadd("comment:" + str(comment.id) + ".ranking",
-                      {"comment_secondary:" + str(comment.id): redis_helpers.epoch_seconds(redis_comment_object["created"])})
+            if comment.parent_thread != None:
+                conn.zadd("thread:" + str(thread.id) + ".ranking", {"comment:" + str(comment.id): redis_helpers.epoch_seconds(redis_comment_object["created"])})
+            else:
+                conn.zadd("comment:" + str(comment.parent_post.id) + ".ranking",
+                      {"comment:" + str(comment.id): redis_helpers.epoch_seconds(redis_comment_object["created"])})
 
         res = []
 
@@ -323,6 +305,5 @@ class RedisServices(viewsets.GenericViewSet):
 
         serialized_threads = ThreadSerializer(threads, many=True)
         serialized_comments = CommentSerializer(comments, many=True)
-        serialized_comments_secondary = CommentSecondarySerializer(comments_secondary, many=True)
 
-        return Response(res + serialized_threads.data + serialized_comments.data + serialized_comments_secondary.data)
+        return Response(res + serialized_threads.data + serialized_comments.data)

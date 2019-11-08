@@ -1,7 +1,7 @@
 
-from .models import Game, Genre, Developer, Forum, Thread, User, UserProfile, Group, Comment, CommentSecondary
+from .models import Game, Genre, Developer, Forum, Thread, User, UserProfile, Group, Comment
 from .serializers import GameSerializer, GenreSerializer, ThreadSerializer, ForumSerializer, DeveloperSerializer, \
-    UserSerializer, UserProfileSerializer, GroupSerializer, CommentSerializer, CommentSecondarySerializer
+    UserSerializer, UserProfileSerializer, GroupSerializer, CommentSerializer
 from django_redis import get_redis_connection
 from datetime import datetime, timedelta
 from math import log
@@ -29,7 +29,6 @@ def hot(ups, downs, date_seconds):
     sign = 1 if s > 0 else -1 if s < 0 else 0
     seconds = epoch_seconds(date_seconds) - (1567363566)  # 1567363566 is Sept 1, 2019
     return round(sign * order + seconds / 21600, 7)  # 10x upvotes to match 21600 = 6 hours
-
 
 def transform_game_to_redis_object(game):
     data = {
@@ -63,21 +62,10 @@ def transform_comment_to_redis_object(comment):
         "created": convert_datetime_to_unix(comment.created),
         "content": comment.content,
         "author": comment.author.id,
-        "parent_thread": comment.parent_thread.id
+        "parent_thread": comment.parent_thread.id if comment.parent_thread != None else "",
+        "parent_post": comment.parent_post.id if comment.parent_post != None else ""
     }
 
-    return data
-
-def transform_sec_comment_to_redis_object(comment):
-    data = {
-        "id": comment.id,
-        "upvotes": comment.upvotes,
-        "downvotes": comment.downvotes,
-        "created": convert_datetime_to_unix(comment.created),
-        "content": comment.content,
-        "author": comment.author.id,
-        "parent_post": comment.parent_post.id
-    }
     return data
 
 def redis_thread_serializer(thread_response):
@@ -106,7 +94,12 @@ def redis_comment_serializer(comment_response):
         else:
             decoded_response[key.decode()] = datetime.fromtimestamp(float(val.decode()), tz)
 
-        if key.decode() in {"id", "author", "num_comments", "upvotes", "downvotes", "parent_thread", "parent_post"}:
+        if key.decode() in {"id", "author", "num_comments", "upvotes", "downvotes"}:
             decoded_response[key.decode()] = int(val.decode())
+        elif key.decode() in {"parent_thread", "parent_post"}:
+            if val.decode() == "":
+                decoded_response[key.decode()] = None
+            else:
+                decoded_response[key.decode()] = int(val.decode())
 
     return decoded_response

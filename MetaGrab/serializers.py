@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Game, Genre, Developer, Forum, Thread, UserProfile, Comment, CommentSecondary
+from .models import Game, Genre, Developer, Forum, Thread, UserProfile, Comment
 from django.contrib.auth.models import User, Group
 from rest_framework.serializers import Serializer
 
@@ -40,11 +40,6 @@ class ThreadSerializer(serializers.ModelSerializer):
 class CommentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Comment
-        fields = '__all__'
-
-class CommentSecondarySerializer(serializers.ModelSerializer):
-    class Meta:
-        model = CommentSecondary
         fields = '__all__'
 
 class GenreSerializer(serializers.ModelSerializer):

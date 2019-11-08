@@ -82,14 +82,9 @@ def get_first_name(self):
 User.add_to_class("__str__", get_first_name)
 
 class Comment(Votable):
-    parent_thread = models.ForeignKey(Thread, on_delete=models.CASCADE)
+    parent_thread = models.ForeignKey(Thread, on_delete=models.CASCADE, null=True, blank=True)
+    parent_post = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True)
     
-    def __str__(self):
-        return self.content
-
-class CommentSecondary(Votable):
-    parent_post = models.ForeignKey(Comment, on_delete=models.CASCADE)
-
     def __str__(self):
         return self.content
 
@@ -114,14 +109,9 @@ def save_forum(sender, instance, **kwargs):
 @receiver(post_save, sender=Comment)
 def create_comment(sender, instance, created, **kwargs):
     if created:
-        parent_thread = instance.parent_thread
-        parent_thread.num_comments += 1
-        parent_thread.save()
+        post = instance
+        while post.parent_post:
+            post = post.parent_post
 
-@receiver(post_save, sender=CommentSecondary)
-def create_commentsecondary(sender, instance, created, **kwargs):
-    if created:
-        parent_post = instance.parent_post
-        parent_thread = parent_post.parent_thread
-        parent_thread.num_comments += 1
-        parent_thread.save()
+        post.parent_thread.num_comments += 1
+        post.parent_thread.save()
