@@ -34,7 +34,7 @@ def transform_game_to_redis_object(game):
     data = {
         "id": game.id,
         "name": game.name,
-        "created": convert_date_to_unix(game.release_date)
+        "created": convert_date_to_unix(game.release_date),
     }
     return data
 
@@ -44,12 +44,15 @@ def transform_thread_to_redis_object(thread):
 	    "flair": thread.flair,
 	    "title": thread.title,
 	    "forum": thread.forum.id,
-	    "num_comments": thread.num_comments,
+	    "num_childs": thread.num_childs,
+        "num_subtree_nodes": thread.num_subtree_nodes,
 	    "author": thread.author.id,
 	    "upvotes": thread.upvotes,
 	    "downvotes": thread.downvotes,
 	    "content": thread.content,
-	    "created": convert_datetime_to_unix(thread.created)
+	    "created": convert_datetime_to_unix(thread.created),
+        "num_childs": thread.num_childs,
+        "num_subtree_nodes": thread.num_subtree_nodes,
     }
 
     return data
@@ -63,10 +66,53 @@ def transform_comment_to_redis_object(comment):
         "content": comment.content,
         "author": comment.author.id,
         "parent_thread": comment.parent_thread.id if comment.parent_thread != None else "",
-        "parent_post": comment.parent_post.id if comment.parent_post != None else ""
+        "parent_post": comment.parent_post.id if comment.parent_post != None else "",
+        "num_childs": comment.num_childs,
+        "num_subtree_nodes": comment.num_subtree_nodes,
     }
 
     return data
+
+def redis_insert_games_bulk(games):
+    for game in games:
+        redis_insert_game(game)
+
+def redis_insert_threads_bulk(threads):
+    for thread in threads:
+        redis_insert_thread(thread)
+
+def redis_insert_comments_bulk(comments):
+    for comment in comments:
+        if comment.parent_thread != None:
+            redis_insert_comment(comment, comment.parent_thread.id)
+        else:
+            redis_insert_child_comment(comment)
+
+def redis_insert_game(game):
+    conn = get_redis_connection('default')
+    redis_game_object = transform_game_to_redis_object(game)
+    conn.hmset("game:" + str(game.id), redis_game_object)
+
+def redis_insert_thread(new_thread):
+    redis_thread_object = transform_thread_to_redis_object(new_thread)
+    conn = get_redis_connection('default')
+    conn.hmset("thread:" + str(new_thread.id), redis_thread_object)
+    conn.zadd("game:" + str(new_thread.forum.id) + ".ranking", {"thread:" + str(new_thread.id): hot(redis_thread_object["upvotes"], redis_thread_object["downvotes"], epoch_seconds(redis_thread_object["created"]))})
+
+def redis_insert_comment(new_comment, thread_id):
+    redis_comment_object = transform_comment_to_redis_object(new_comment)
+    conn = get_redis_connection('default')
+    conn.hmset("comment:" + str(new_comment.id), redis_comment_object)
+    conn.zadd("thread:" + str(thread_id) + ".ranking", {"comment:" + str(new_comment.id): epoch_seconds(redis_comment_object["created"])})
+
+def redis_insert_child_comment(new_secondary_comment):
+    parent_comment = new_secondary_comment.parent_post
+    redis_comment_object = transform_comment_to_redis_object(new_secondary_comment)
+
+    conn = get_redis_connection('default')
+    conn.hmset("comment:" + str(new_secondary_comment.id), redis_comment_object)
+    conn.zadd("comment:" + str(parent_comment.id) + ".ranking",
+                  {"comment:" + str(new_secondary_comment.id): epoch_seconds(redis_comment_object["created"])})
 
 def redis_thread_serializer(thread_response):
 	decoded_response = {}
@@ -76,7 +122,7 @@ def redis_thread_serializer(thread_response):
 		else:
 		    decoded_response[key.decode()] = datetime.fromtimestamp(float(val.decode()), tz)
 
-		if key.decode() in {"id", "author", "num_comments", "upvotes", "downvotes"}:
+		if key.decode() in {"id", "author", "num_childs", "num_subtree_nodes", "upvotes", "downvotes"}:
 		    decoded_response[key.decode()] = int(val.decode())
 
 		# forum field in json response is nested, additional O(1) retrieve call required
@@ -94,7 +140,7 @@ def redis_comment_serializer(comment_response):
         else:
             decoded_response[key.decode()] = datetime.fromtimestamp(float(val.decode()), tz)
 
-        if key.decode() in {"id", "author", "num_comments", "upvotes", "downvotes"}:
+        if key.decode() in {"id", "author", "num_childs", "num_subtree_nodes", "upvotes", "downvotes"}:
             decoded_response[key.decode()] = int(val.decode())
         elif key.decode() in {"parent_thread", "parent_post"}:
             if val.decode() == "":
@@ -103,3 +149,33 @@ def redis_comment_serializer(comment_response):
                 decoded_response[key.decode()] = int(val.decode())
 
     return decoded_response
+
+def redis_get_threads_by_game_id(game_id, start, count):
+    conn = get_redis_connection('default')
+    encoded_threads = conn.zrevrange("game:" + str(game_id) + ".ranking", start, start + count - 1)
+    serializer = []
+
+    for encoded_thread in encoded_threads:
+        response = conn.hgetall(encoded_thread.decode())
+        serializer.append(redis_thread_serializer(response))
+    return serializer
+
+def redis_get_comments_by_thread_id(thread_id, start, count):
+    conn = get_redis_connection('default')
+    encoded_comments = conn.zrevrange("thread:" + str(thread_id) + ".ranking", start, start + count - 1)
+    serializer = []
+
+    for encoded_comment in encoded_comments:
+        response = conn.hgetall(encoded_comment.decode())
+        serializer.append(redis_comment_serializer(response))
+    return serializer
+
+def redis_get_comments_by_primary_comment_id(primary_comment_id, start, count):
+    conn = get_redis_connection('default')
+    encoded_comments = conn.zrevrange("comment:" + str(primary_comment_id) + ".ranking", start, start + count - 1)
+    serializer = []
+
+    for encoded_comment in encoded_comments:
+        response = conn.hgetall(encoded_comment.decode())
+        serializer.append(redis_comment_serializer(response))
+    return serializer

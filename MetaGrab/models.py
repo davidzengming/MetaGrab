@@ -47,6 +47,9 @@ class Votable(models.Model):
     downvotes = models.IntegerField(default=0)
     content = models.TextField(max_length = 40000)
 
+    num_childs = models.IntegerField(default = 0)
+    num_subtree_nodes = models.IntegerField(default = 0)
+
 class Thread(Votable):
     TYPE_UPDATE = 'update'
     TYPE_DISCUSSION = 'discussion'
@@ -64,7 +67,11 @@ class Thread(Votable):
     )
     title = models.TextField(max_length = 200)
     forum = models.ForeignKey(Forum, on_delete=models.CASCADE)
-    num_comments = models.IntegerField(default = 0)
+
+    @classmethod
+    def create(cls, flair, title, content, author, forum):
+        thread = cls.objects.create(flair=flair, title=title, content=content, author=author, forum=forum)
+        return thread
 
     def __str__(self):
         return self.title
@@ -73,6 +80,20 @@ class UserProfile(models.Model):
     created = models.DateTimeField(default=now, editable=False)
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     followed_games = models.ManyToManyField(Game)
+
+    def find_followed_games(self):
+        return self.followed_games
+
+    def follow_game(self, game):
+        self.followed_games.add(game)
+        self.save()
+        return
+
+    def unfollow_game(self, game):
+        self.followed_games.remove(game)
+        self.save()
+        return
+
     def __str__(self):
         return "__all__"
 
@@ -85,6 +106,11 @@ class Comment(Votable):
     parent_thread = models.ForeignKey(Thread, on_delete=models.CASCADE, null=True, blank=True)
     parent_post = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True)
     
+    @classmethod
+    def create(cls, parent_thread, parent_post, content, author):
+        comment = cls.objects.create(parent_thread=parent_thread, parent_post=parent_post, content=content, author=author)
+        return comment
+
     def __str__(self):
         return self.content
 
@@ -110,8 +136,18 @@ def save_forum(sender, instance, **kwargs):
 def create_comment(sender, instance, created, **kwargs):
     if created:
         post = instance
+        if post.parent_post:
+            post.parent_post.num_childs += 1
+            post.parent_post.save()
+        else:
+            post.parent_thread.num_childs += 1
+            post.parent_thread.save()
+
+        post = instance
         while post.parent_post:
             post = post.parent_post
+            post.num_subtree_nodes += 1
+            post.save()
 
-        post.parent_thread.num_comments += 1
+        post.parent_thread.num_subtree_nodes += 1
         post.parent_thread.save()
