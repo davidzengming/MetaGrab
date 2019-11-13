@@ -6,7 +6,8 @@ from django_redis import get_redis_connection
 from datetime import datetime, timedelta
 from math import log
 from time import mktime
-import pytz
+import pytz, collections
+from django_redis import get_redis_connection
 
 epoch_seconds_1970 = datetime(1970, 1, 1, 0, 0).timestamp()
 tz = pytz.timezone('America/Toronto')
@@ -170,12 +171,72 @@ def redis_get_comments_by_thread_id(thread_id, start, count):
         serializer.append(redis_comment_serializer(response))
     return serializer
 
-def redis_get_comments_by_primary_comment_id(primary_comment_id, start, count):
+def redis_get_comments_by_parent_comment_id(parent_comment_id, start, count):
     conn = get_redis_connection('default')
-    encoded_comments = conn.zrevrange("comment:" + str(primary_comment_id) + ".ranking", start, start + count - 1)
+    encoded_comments = conn.zrevrange("comment:" + str(parent_comment_id) + ".ranking", start, start + count - 1)
     serializer = []
 
     for encoded_comment in encoded_comments:
         response = conn.hgetall(encoded_comment.decode())
         serializer.append(redis_comment_serializer(response))
     return serializer
+
+def redis_get_tree_by_parent_comments_id(roots, size, next_page_start, count, parent_comment_id):
+    conn = get_redis_connection('default')
+    queue = collections.deque(roots[::-1])
+    comments_to_be_added = []
+
+    next_page_more_comments = conn.zrevrange("comment:" + str(parent_comment_id) + ".ranking", next_page_start + count, next_page_start + 2 * count - 1)
+
+    while queue and size > 0:
+        node = queue.pop()
+        response = conn.hgetall("comment:" + str(node))
+        comments_to_be_added.append(redis_comment_serializer(response))
+        
+        size -= 1
+        if size == 0:
+            break
+
+        nested_encoded_comments = conn.zrevrange("comment:" + str(node) + ".ranking", 0, count - 1)
+        for encoded_comment in nested_encoded_comments:
+            _, comment_id = encoded_comment.decode().split(":")
+            queue.appendleft(comment_id)
+
+    more_comments_response = [redis_comment_serializer(conn.hgetall("comment:" + str(node))) for node in list(reversed(queue))]
+    next_page_more_comments_response = [redis_comment_serializer(conn.hgetall(encoded_comment.decode())) for encoded_comment in next_page_more_comments]
+    return comments_to_be_added, more_comments_response + next_page_more_comments_response
+
+def redis_get_tree_by_parent_thread_id(roots, size, next_page_start, count, parent_thread_id):
+    conn = get_redis_connection('default')
+    queue = []
+    comments_to_be_added = []
+    next_page_more_comments = []
+
+    if next_page_start == 0:
+        queue = collections.deque([int(encoded_comment.decode().split(":")[1]) for encoded_comment in conn.zrevrange("thread:" + str(parent_thread_id) + ".ranking", 0, count - 1)])
+        next_page_more_comments = conn.zrevrange("thread:" + str(parent_thread_id) + ".ranking", count, count * 2 - 1)
+    else:
+        queue = collections.deque(roots[::-1])
+        next_page_more_comments = conn.zrevrange("thread:" + str(parent_thread_id) + ".ranking", next_page_start + count, next_page_start + 2 * count - 1)
+
+    while queue and size > 0:
+        node = queue.pop()
+        response = conn.hgetall("comment:" + str(node))
+        comments_to_be_added.append(redis_comment_serializer(response))
+        
+        size -= 1
+        if size == 0:
+            break
+
+        nested_encoded_comments = conn.zrevrange("comment:" + str(node) + ".ranking", 0, count - 1)
+        for encoded_comment in nested_encoded_comments:
+            _, comment_id = encoded_comment.decode().split(":")
+            queue.appendleft(comment_id)
+
+    more_comments_response = [redis_comment_serializer(conn.hgetall("comment:" + str(node))) for node in list(reversed(queue))]
+    next_page_more_comments_response = [redis_comment_serializer(conn.hgetall(encoded_comment.decode())) for encoded_comment in next_page_more_comments]
+    return comments_to_be_added, more_comments_response + next_page_more_comments_response
+
+def flush_redis():
+    conn = get_redis_connection('default')
+    conn.flushall()

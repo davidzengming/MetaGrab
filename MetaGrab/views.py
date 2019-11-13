@@ -11,14 +11,9 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from django.db import models, connection
 
 from . import redis_helpers
+from django_redis import get_redis_connection
 import json, datetime
 
-# redis
-from django_redis import get_redis_connection
-from datetime import datetime, timedelta
-from math import log
-from time import mktime
-import pytz
 
 class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
     def validate(self, attrs):
@@ -159,33 +154,53 @@ class CommentViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
     @action(detail=False, methods=['get'])
-    def get_comments_by_primary_comment_id(self, request, pk=None):
-        primary_comment_id = int(request.GET['primary_comment_id'])
-        primary_comment = Comment.objects.get(pk=primary_comment_id)
+    def get_comments_by_parent_comment_id(self, request, pk=None):
+        parent_comment_id = int(request.GET['parent_comment_id'])
         start = int(request.GET['start'])
         count = int(request.GET['count'])
 
-        return Response(redis_helpers.redis_get_comments_by_primary_comment_id(primary_comment_id, start, count))
+        return Response(redis_helpers.redis_get_comments_by_parent_comment_id(parent_comment_id, start, count))
         # secondary_comments = primary_comment.commentsecondary_set.all()
         # serializer = CommentSecondarySerializer(secondary_comments, many=True)
         # return Response(serializer.data)
 
     @action(detail=False, methods=['post'])
-    def post_comment_by_primary_comment_id(self, request, pk=None):
-        primary_comment_id = int(request.GET['primary_comment_id'])
-        primary_comment = Comment.objects.get(pk=primary_comment_id)
-        parent_thread = primary_comment.parent_thread
+    def post_comment_by_parent_comment_id(self, request, pk=None):
+        parent_comment_id = int(request.GET['parent_comment_id'])
+        parent_comment = Comment.objects.get(pk=parent_comment_id)
         body_unicode = request.body.decode('utf-8') 
         body = json.loads(body_unicode)
         content = body['content']
         user_id = request.user.id
         user = User.objects.get(pk=user_id)
 
-        new_secondary_comment = Comment.create(parent_thread=None, parent_post=primary_comment, content=content, author=user)
-        redis_helpers.redis_insert_child_comment(new_secondary_comment)
+        new_child_comment = Comment.create(parent_thread=None, parent_post=parent_comment, content=content, author=user)
+        redis_helpers.redis_insert_child_comment(new_child_comment)
 
-        serializer = CommentSerializer(new_secondary_comment, many=False)
+        serializer = CommentSerializer(new_child_comment, many=False)
         return Response(serializer.data)
+
+    @action(detail=False, methods=['get'])
+    def get_comment_tree_by_parent_comments(self, request, pk=None):
+        roots = request.GET.getlist('roots')
+        start = int(request.GET['start'])
+        count = int(request.GET['count'])
+        size = int(request.GET['count'])
+        parent_comment_id = int(request.GET['parent_comment_id'])
+
+        serialized_added_comments, serialized_more_comments_cache = redis_helpers.redis_get_tree_by_parent_comments_id(roots, size, start, count, parent_comment_id)
+        return Response({"added_comments": serialized_added_comments, "more_comments": serialized_more_comments_cache})
+
+    @action(detail=False, methods=['get'])
+    def get_comment_tree_by_thread_id(self, request, pk=None):
+        roots = request.GET.getlist('roots')
+        start = int(request.GET['start'])
+        count = int(request.GET['count'])
+        size = int(request.GET['count'])
+        parent_thread_id = int(request.GET['parent_thread_id'])
+
+        serialized_added_comments, serialized_more_comments_cache = redis_helpers.redis_get_tree_by_parent_thread_id(roots, size, start, count, parent_thread_id)
+        return Response({"added_comments": serialized_added_comments, "more_comments": serialized_more_comments_cache})
 
 
 class UserViewSet(viewsets.ModelViewSet):
@@ -208,20 +223,23 @@ class RedisServices(viewsets.GenericViewSet):
 
     @action(detail=False, methods=['get'])
     def migrate_to_redis(self, request, pk=None):
-        conn = get_redis_connection('default')
-        conn.flushall()
         games = Game.objects.all()
         threads = Thread.objects.all()
         comments = Comment.objects.all()
-
+        
+        redis_helpers.flush_redis()
         redis_helpers.redis_insert_games_bulk(games)
         redis_helpers.redis_insert_threads_bulk(threads)
         redis_helpers.redis_insert_comments_bulk(comments)
 
+        conn = get_redis_connection('default')
         res = []
         for thread in threads:
             response = conn.hgetall("thread:" + str(thread.id))
             res.append(redis_helpers.redis_thread_serializer(response))
+
+
+        print(threads)
         
         # print(res) 
         # print(conn.zrevrange("thread:1.ranking", 0, -1, withscores = True))
