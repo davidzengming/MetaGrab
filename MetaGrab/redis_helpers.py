@@ -123,7 +123,7 @@ def redis_thread_serializer(thread_response):
 		else:
 		    decoded_response[key.decode()] = datetime.fromtimestamp(float(val.decode()), tz)
 
-		if key.decode() in {"id", "author", "num_childs", "num_subtree_nodes", "upvotes", "downvotes"}:
+		if key.decode() in {"id", "author", "num_childs", "num_subtree_nodes", "upvotes", "downvotes", "flair"}:
 		    decoded_response[key.decode()] = int(val.decode())
 
 		# forum field in json response is nested, additional O(1) retrieve call required
@@ -155,11 +155,12 @@ def redis_get_threads_by_game_id(game_id, start, count):
     conn = get_redis_connection('default')
     encoded_threads = conn.zrevrange("game:" + str(game_id) + ".ranking", start, start + count - 1)
     serializer = []
+    has_next_page = (start + count - 1) < conn.zcard("game:" + str(game_id) + ".ranking")
 
     for encoded_thread in encoded_threads:
         response = conn.hgetall(encoded_thread.decode())
         serializer.append(redis_thread_serializer(response))
-    return serializer
+    return serializer, has_next_page
 
 def redis_get_comments_by_thread_id(thread_id, start, count):
     conn = get_redis_connection('default')

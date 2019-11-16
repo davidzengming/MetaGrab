@@ -110,7 +110,8 @@ class ThreadViewSet(viewsets.ModelViewSet):
         count = int(request.GET['count'])
 
         if game_id:
-            return Response(redis_helpers.redis_get_threads_by_game_id(game_id, start, count))
+            threads_response, has_next_page = redis_helpers.redis_get_threads_by_game_id(game_id, start, count)
+            return Response({"threads_response": threads_response, "has_next_page": has_next_page})
             # try:
             #     forum = Forum.objects.get(pk=game_id)
             # except Forum.DoesNotExist:

@@ -51,17 +51,16 @@ class Votable(models.Model):
     num_subtree_nodes = models.IntegerField(default = 0)
 
 class Thread(Votable):
-    TYPE_UPDATE = 'update'
-    TYPE_DISCUSSION = 'discussion'
-    TYPE_MEME = 'meme'
+    TYPE_UPDATE = 0
+    TYPE_DISCUSSION = 1
+    TYPE_MEME = 2
     TYPE_CHOICES = (
-        (TYPE_UPDATE, 'Update'),
-        (TYPE_DISCUSSION, 'Discussion'),
-        (TYPE_MEME, 'Meme'),
+        (TYPE_UPDATE, 0),
+        (TYPE_DISCUSSION, 1),
+        (TYPE_MEME, 2),
     )
 
-    flair = models.CharField(
-        max_length = 20,
+    flair = models.IntegerField(
         choices=TYPE_CHOICES,
         default=TYPE_DISCUSSION,
     )
