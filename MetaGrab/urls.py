@@ -14,6 +14,7 @@ router.register(r'users', views.UserViewSet)
 router.register(r'users_profile', views.UserProfileViewSet)
 router.register(r'groups', views.GroupViewSet)
 router.register(r'comments', views.CommentViewSet)
+router.register(r'votes', views.VoteViewSet)
 router.register(r'redis', views.RedisServices, basename='redis')
 
 from rest_framework_simplejwt.views import (

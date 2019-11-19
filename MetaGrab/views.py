@@ -1,6 +1,6 @@
-from .models import Game, Genre, Developer, Forum, Thread, User, UserProfile, Group, Comment
+from .models import Game, Genre, Developer, Forum, Thread, User, UserProfile, Group, Comment, Vote
 from .serializers import GameSerializer, GenreSerializer, ThreadSerializer, ForumSerializer, DeveloperSerializer, \
-    UserSerializer, UserProfileSerializer, GroupSerializer, CommentSerializer
+    UserSerializer, UserProfileSerializer, GroupSerializer, CommentSerializer, VoteSerializer
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -121,6 +121,80 @@ class ThreadViewSet(viewsets.ModelViewSet):
             # serializer = self.get_serializer(threads_get_by_forum_id, many=True)
             # return Response(serializer.data)
 
+class VoteViewSet(viewsets.ModelViewSet):
+    queryset = Vote.objects.all()
+    serializer_class = VoteSerializer
+
+    @action(detail=False, methods=['post'])
+    def upvote_by_comment_id(self, request, pk=None):
+        comment_id = int(request.GET['comment_id'])
+        user_id = request.user.id
+        comment = Comment.objects.get(pk=comment_id)
+        user = User.objects.get(pk=user_id)
+        found_vote = Vote.objects.get(comment=comment, user=user)
+
+        if found_vote:
+            found_vote.switch_vote_comment(comment)
+        else:
+            new_vote = Vote.create(user, True, None, comment)
+            comment.increment_upvotes()
+
+        return new_vote
+
+    @action(detail=False, methods=['post'])
+    def downvote_by_comment_id(self, request, pk=None):
+        comment_id = int(request.GET['comment_id'])
+        user_id = request.user.id
+        comment = Comment.objects.get(pk=comment_id)
+        user = User.objects.get(pk=user_id)
+        found_vote = Vote.objects.get(comment=comment, user=user)
+
+        if found_vote:
+            found_vote.switch_vote_comment(comment)
+        else:
+            new_vote = Vote.create(user, False, None, comment)
+            comment.decrement_downvotes()
+
+        return new_vote
+
+    @action(detail=False, methods=['post'])
+    def upvote_by_thread_id(self, request, pk=None):
+        thread_id = int(request.GET['thread_id'])
+        user_id = request.user.id
+        thread = Thread.objects.get(pk=thread_id)
+        user = User.objects.get(pk=user_id)
+        found_vote = Vote.objects.get(thread=thread, user=user)
+
+        if found_vote:
+            found_vote.switch_vote_thread(thread)
+        else:
+            new_vote = Vote.create(user, True, thread, None)
+            thread.increment_upvotes()
+
+        return new_vote
+
+    @action(detail=False, methods=['post'])
+    def downvote_by_thread_id(self, request, pk=None):
+        thread_id = int(request.GET['thread_id'])
+        user_id = request.user.id
+        thread = Thread.objects.get(pk=thread_id)
+        user = User.objects.get(pk=user_id)
+        found_vote = Vote.objects.get(thread=thread, user=user)
+
+        if found_vote:
+            found_vote.switch_vote_thread(thread)
+        else:
+            new_vote = Vote.create(user, True, thread, None)
+            thread.decrement_downvotes()
+
+        return new_vote
+    
+    @action(detail=False, methods=['post'])
+    def delete_vote_by_vote_id(self, request, pk=None):
+        vote_id = int(request.GET['vote_id'])
+        Vote.delete(vote_id)
+        return Response()
+
 
 class CommentViewSet(viewsets.ModelViewSet):
     queryset = Comment.objects.all()
@@ -227,6 +301,7 @@ class RedisServices(viewsets.GenericViewSet):
         games = Game.objects.all()
         threads = Thread.objects.all()
         comments = Comment.objects.all()
+        votes = Vote.objects.all()
         
         redis_helpers.flush_redis()
         redis_helpers.redis_insert_games_bulk(games)

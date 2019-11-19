@@ -74,6 +74,17 @@ def transform_comment_to_redis_object(comment):
 
     return data
 
+def transform_vote_to_redis_object(vote):
+    data = {
+        "id": vote.id,
+        "user": vote.user,
+        "thread": vote.thread.id if vote.thread != None else "",
+        "comment": vote.comment.id if vote.comment != None else "",
+        "is_positive": "1" if vote.is_positive else "0",
+    }
+
+    return data
+
 def redis_insert_games_bulk(games):
     for game in games:
         redis_insert_game(game)
@@ -89,6 +100,14 @@ def redis_insert_comments_bulk(comments):
         else:
             redis_insert_child_comment(comment)
 
+def redis_insert_vote(vote):
+    conn = get_redis_connection('default')
+    redis_vote_object = transform_vote_to_redis_object(vote)
+    conn.hmset("vote:" + str(vote.id), redis_vote_object)
+
+    conn.hmset("vote:user:thread:" + str(vote.thread.id), )
+    conn.hmset("vote:user:comment:" + str(vote.comment.id))
+
 def redis_insert_game(game):
     conn = get_redis_connection('default')
     redis_game_object = transform_game_to_redis_object(game)
@@ -100,11 +119,43 @@ def redis_insert_thread(new_thread):
     conn.hmset("thread:" + str(new_thread.id), redis_thread_object)
     conn.zadd("game:" + str(new_thread.forum.id) + ".ranking", {"thread:" + str(new_thread.id): hot(redis_thread_object["upvotes"], redis_thread_object["downvotes"], epoch_seconds(redis_thread_object["created"]))})
 
+def redis_increment_tree_count_by_comment_id(new_comment_id):
+    conn = get_redis_connection('default')
+
+    def find_parent(find_parent_new__comment_id):
+        parent_thread_id = conn.hget("comment:" + str(find_parent_new__comment_id), "parent_thread").decode()
+        parent_post_id = conn.hget("comment:" + str(find_parent_new__comment_id), "parent_post").decode()
+        parent_thread_id = parent_thread_id if parent_thread_id != "" else None
+        parent_post_id = parent_post_id if parent_post_id != "" else None
+        return parent_thread_id, parent_post_id
+
+    print("Posted new comment: ", new_comment_id)
+    parent_thread_id, parent_post_id = find_parent(new_comment_id)
+    if parent_thread_id:
+        num_childs = int(conn.hget("thread:" + str(parent_thread_id), "num_childs").decode())
+        conn.hset("thread:" + str(parent_thread_id), "num_childs", num_childs + 1)
+    else:
+        num_childs = int(conn.hget("comment:" + str(parent_post_id), "num_childs").decode())
+        conn.hset("comment:" + str(parent_post_id), "num_childs", num_childs + 1)
+
+    while parent_thread_id or parent_post_id:
+        if parent_thread_id:
+            num_subtree_nodes = int(conn.hget("thread:" + str(parent_thread_id), "num_subtree_nodes").decode())
+            conn.hset("thread:" + str(parent_thread_id), "num_subtree_nodes", num_subtree_nodes + 1)
+            break
+        else:
+            num_subtree_nodes = int(conn.hget("comment:" + str(parent_post_id), "num_subtree_nodes").decode())
+            conn.hset("comment:" + str(parent_post_id), "num_subtree_nodes", num_subtree_nodes + 1)
+            parent_thread_id, parent_post_id = find_parent(parent_post_id)
+
+    return
+
 def redis_insert_comment(new_comment, thread_id):
     redis_comment_object = transform_comment_to_redis_object(new_comment)
     conn = get_redis_connection('default')
     conn.hmset("comment:" + str(new_comment.id), redis_comment_object)
     conn.zadd("thread:" + str(thread_id) + ".ranking", {"comment:" + str(new_comment.id): epoch_seconds(redis_comment_object["created"])})
+    redis_increment_tree_count_by_comment_id(new_comment.id)
 
 def redis_insert_child_comment(new_secondary_comment):
     parent_comment = new_secondary_comment.parent_post
@@ -114,6 +165,7 @@ def redis_insert_child_comment(new_secondary_comment):
     conn.hmset("comment:" + str(new_secondary_comment.id), redis_comment_object)
     conn.zadd("comment:" + str(parent_comment.id) + ".ranking",
                   {"comment:" + str(new_secondary_comment.id): epoch_seconds(redis_comment_object["created"])})
+    redis_increment_tree_count_by_comment_id(new_secondary_comment.id)
 
 def redis_thread_serializer(thread_response):
 	decoded_response = {}
