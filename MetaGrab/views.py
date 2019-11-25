@@ -142,7 +142,7 @@ class VoteViewSet(viewsets.ModelViewSet):
 
         new_vote = Vote.create(user, True, None, comment)
         updated_comment = comment.increment_upvotes()
-        redis_helpers.redis_insert_comment_choose(updated_comment)
+        redis_helpers.redis_insert_comment_choose(updated_comment, False)
         redis_helpers.redis_insert_vote(new_vote)
 
         serializer = self.get_serializer(new_vote, many=False)
@@ -157,7 +157,7 @@ class VoteViewSet(viewsets.ModelViewSet):
 
         found_vote = Vote.objects.get(pk=vote_id)
         updated_comment = found_vote.switch_vote_comment()
-        redis_helpers.redis_insert_comment_choose(updated_comment)
+        redis_helpers.redis_insert_comment_choose(updated_comment, False)
         redis_helpers.redis_delete_vote(found_vote.id, user_id, False, updated_comment.id)
         redis_helpers.redis_insert_vote(found_vote)
 
@@ -175,7 +175,7 @@ class VoteViewSet(viewsets.ModelViewSet):
 
         new_vote = Vote.create(user, False, None, comment)
         updated_comment = comment.increment_downvotes()
-        redis_helpers.redis_insert_comment_choose(updated_comment)
+        redis_helpers.redis_insert_comment_choose(updated_comment, False)
         redis_helpers.redis_insert_vote(new_vote)
 
         serializer = self.get_serializer(new_vote, many=False)
@@ -190,7 +190,7 @@ class VoteViewSet(viewsets.ModelViewSet):
 
         found_vote = Vote.objects.get(pk=vote_id)
         updated_comment = found_vote.switch_vote_comment()
-        redis_helpers.redis_insert_comment_choose(updated_comment)
+        redis_helpers.redis_insert_comment_choose(updated_comment, False)
         redis_helpers.redis_delete_vote(found_vote.id, user_id, False, updated_comment.id)
         redis_helpers.redis_insert_vote(found_vote)
 
@@ -283,7 +283,7 @@ class VoteViewSet(viewsets.ModelViewSet):
         vote_id = body['vote_id']
         user_id = request.user.id
         updated_comment = Vote.delete_comment_vote(vote_id)
-        redis_helpers.redis_insert_comment(updated_comment)
+        redis_helpers.redis_insert_comment_choose(updated_comment, False)
         redis_helpers.redis_delete_vote(vote_id, user_id, False, updated_comment.id)
 
         serializer = CommentSerializer(updated_comment, many=False)
@@ -319,7 +319,7 @@ class CommentViewSet(viewsets.ModelViewSet):
         new_comment = Comment.create(parent_thread=parent_thread, parent_post=None, content=content, author=user)
         new_vote = Vote.create(user, True, None, new_comment)
 
-        redis_helpers.redis_insert_comment(new_comment, thread_id)
+        redis_helpers.redis_insert_comment(new_comment, thread_id, True)
         redis_helpers.redis_insert_vote(new_vote)
 
         serializer = CommentSerializer(new_comment, many=False)
@@ -351,7 +351,7 @@ class CommentViewSet(viewsets.ModelViewSet):
         new_child_comment = Comment.create(parent_thread=None, parent_post=parent_comment, content=content, author=user)
         new_vote = Vote.create(user, True, None, new_child_comment)
 
-        redis_helpers.redis_insert_child_comment(new_child_comment)
+        redis_helpers.redis_insert_child_comment(new_child_comment, True)
         redis_helpers.redis_insert_vote(new_vote)
 
         serializer = CommentSerializer(new_child_comment, many=False)

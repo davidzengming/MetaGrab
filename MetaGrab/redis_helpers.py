@@ -95,13 +95,13 @@ def redis_insert_threads_bulk(threads):
 
 def redis_insert_comments_bulk(comments):
     for comment in comments:
-        redis_insert_comment_choose(comment)
+        redis_insert_comment_choose(comment, True)
 
-def redis_insert_comment_choose(comment):
+def redis_insert_comment_choose(comment, is_new):
     if comment.parent_thread != None:
-        redis_insert_comment(comment, comment.parent_thread.id)
+        redis_insert_comment(comment, comment.parent_thread.id, is_new)
     else:
-        redis_insert_child_comment(comment)
+        redis_insert_child_comment(comment, is_new)
 
 def redis_insert_votes_bulk(votes):
     for vote in votes:
@@ -140,7 +140,7 @@ def redis_insert_thread(new_thread):
     conn.zadd("game:" + str(new_thread.forum.id) + ".ranking", {"thread:" + str(new_thread.id): hot(redis_thread_object["upvotes"], redis_thread_object["downvotes"], epoch_seconds(redis_thread_object["created"]))})
 
 def redis_increment_tree_count_by_comment_id(new_comment_id):
-    conn = get_redis_connection('default')
+    conn = get_redis_connection('default')  
 
     def find_parent(find_parent_new__comment_id):
         parent_thread_id = conn.hget("comment:" + str(find_parent_new__comment_id), "parent_thread").decode()
@@ -151,27 +151,30 @@ def redis_increment_tree_count_by_comment_id(new_comment_id):
 
     parent_thread_id, parent_post_id = find_parent(new_comment_id)
     if parent_thread_id:
-        conn.hincrby("thread:" + str(parent_thread_id), "num_childs")
+        conn.hincrby("thread:" + str(parent_thread_id), "num_childs", 1)
     else:
-        conn.hincrby("comment:" + str(parent_post_id), "num_childs")
+        conn.hincrby("comment:" + str(parent_post_id), "num_childs", 1)
 
     while parent_thread_id or parent_post_id:
         if parent_thread_id:
-            conn.hincrby("thread:" + str(parent_thread_id), "num_subtree_nodes")
+            print("before: ", conn.hget("thread:" + str(parent_thread_id), "num_subtree_nodes"))
+            conn.hincrby("thread:" + str(parent_thread_id), "num_subtree_nodes", 1)
+            print("after: ", conn.hget("thread:" + str(parent_thread_id), "num_subtree_nodes"))
             break
         else:
-            conn.hincrby("comment:" + str(parent_post_id), "num_subtree_nodes")
+            conn.hincrby("comment:" + str(parent_post_id), "num_subtree_nodes", 1)
             parent_thread_id, parent_post_id = find_parent(parent_post_id)
     return
 
-def redis_insert_comment(new_comment, thread_id):
+def redis_insert_comment(new_comment, thread_id, is_new):
     redis_comment_object = transform_comment_to_redis_object(new_comment)
     conn = get_redis_connection('default')
     conn.hmset("comment:" + str(new_comment.id), redis_comment_object)
     conn.zadd("thread:" + str(thread_id) + ".ranking", {"comment:" + str(new_comment.id): epoch_seconds(redis_comment_object["created"])})
-    redis_increment_tree_count_by_comment_id(new_comment.id)
+    if is_new:
+        redis_increment_tree_count_by_comment_id(new_comment.id)
 
-def redis_insert_child_comment(new_secondary_comment):
+def redis_insert_child_comment(new_secondary_comment, is_new):
     parent_comment = new_secondary_comment.parent_post
     redis_comment_object = transform_comment_to_redis_object(new_secondary_comment)
 
@@ -179,7 +182,9 @@ def redis_insert_child_comment(new_secondary_comment):
     conn.hmset("comment:" + str(new_secondary_comment.id), redis_comment_object)
     conn.zadd("comment:" + str(parent_comment.id) + ".ranking",
                   {"comment:" + str(new_secondary_comment.id): epoch_seconds(redis_comment_object["created"])})
-    redis_increment_tree_count_by_comment_id(new_secondary_comment.id)
+    
+    if is_new:
+        redis_increment_tree_count_by_comment_id(new_secondary_comment.id)
 
 def redis_thread_serializer(thread_response):
 	decoded_response = {}
@@ -242,6 +247,9 @@ def redis_get_threads_by_game_id(game_id, start, count, user_id):
     encoded_threads = conn.zrevrange("game:" + str(game_id) + ".ranking", start, start + count - 1)
     serializer, vote_serializer = [], []
     has_next_page = (start + count - 1) < conn.zcard("game:" + str(game_id) + ".ranking")
+
+    print(has_next_page)
+    print(start + count - 1, conn.zcard("game:" + str(game_id) + ".ranking"))
     
 
     for encoded_thread in encoded_threads:
