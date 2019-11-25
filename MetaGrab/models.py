@@ -3,6 +3,7 @@ from django.contrib.auth.models import User, Group
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.utils.timezone import now
+from django.db.models import F
 
 # Create your models here.
 class Developer(models.Model):
@@ -73,22 +74,42 @@ class Thread(Votable):
         return thread
 
     def increment_upvotes(self):
-        self.upvotes += 1
+        self.upvotes = F('upvotes') + 1
         self.save()
+        self.refresh_from_db()
+        return self
 
     def switch_increment_upvotes(self):
-        self.upvotes += 1
-        self.downvotes -= 1
+        self.upvotes = F('upvotes') + 1
+        self.downvotes = F('downvotes') - 1
         self.save()
+        self.refresh_from_db()
+        return self
+
+    def increment_downvotes(self):
+        self.downvotes = F('downvotes') + 1
+        self.save()
+        self.refresh_from_db()
+        return self
+
+    def decrement_upvotes(self):
+        self.upvotes = F('upvotes') - 1
+        self.save()
+        self.refresh_from_db()
+        return self
 
     def decrement_downvotes(self):
-        self.downvotes += 1
+        self.downvotes = F('downvotes') - 1
         self.save()
+        self.refresh_from_db()
+        return self
 
     def switch_increment_downvotes(self):
-        self.upvotes += 1
-        self.downvotes -= 1
+        self.upvotes = F('upvotes') - 1
+        self.downvotes = F('downvotes') + 1
         self.save()
+        self.refresh_from_db()
+        return self
 
     def __str__(self):
         return self.title
@@ -103,22 +124,42 @@ class Comment(Votable):
         return comment
 
     def increment_upvotes(self):
-        self.upvotes += 1
+        self.upvotes = F('upvotes') + 1
         self.save()
+        self.refresh_from_db()
+        return self
 
     def switch_increment_upvotes(self):
-        self.upvotes += 1
-        self.downvotes -= 1
+        self.upvotes = F('upvotes') + 1
+        self.downvotes = F('downvotes') - 1
         self.save()
+        self.refresh_from_db()
+        return self
+
+    def increment_downvotes(self):
+        self.downvotes = F('downvotes') + 1
+        self.save()
+        self.refresh_from_db()
+        return self
+
+    def decrement_upvotes(self):
+        self.upvotes = F('upvotes') - 1
+        self.save()
+        self.refresh_from_db()
+        return self
 
     def decrement_downvotes(self):
-        self.downvotes += 1
+        self.downvotes = F('downvotes') - 1
         self.save()
+        self.refresh_from_db()
+        return self
 
     def switch_increment_downvotes(self):
-        self.upvotes += 1
-        self.downvotes -= 1
+        self.upvotes = F('upvotes') - 1
+        self.downvotes = F('downvotes') + 1
         self.save()
+        self.refresh_from_db()
+        return self
 
     def __str__(self):
         return self.content
@@ -151,7 +192,7 @@ User.add_to_class("__str__", get_first_name)
 
 class Vote(models.Model):
     created = models.DateTimeField(default=now, editable=False)
-    user = models.OneToOneField(User, on_delete=models.CASCADE)
+    user = models.ForeignKey(User, on_delete=models.PROTECT)
     is_positive = models.BooleanField(blank=False)
     thread = models.ForeignKey(Thread, on_delete=models.CASCADE, null=True, blank=True)
     comment = models.ForeignKey(Comment, on_delete=models.CASCADE, null=True, blank=True)
@@ -162,43 +203,45 @@ class Vote(models.Model):
         return vote
 
     @classmethod
-    def delete(cls, vote_id):
-        vote = Vote.objects.get(pk=vote_id)
+    def delete_thread_vote(cls, vote_id):
+        vote = cls.objects.get(pk=vote_id)
 
-        # vote is for a thread
-        if vote.thread:
-            if vote.is_positive:
-                thread.decrement_downvotes()
-            else:
-                thread.increment_upvotes()
-        # vote is for a comment
+        thread = vote.thread
+        if vote.is_positive:
+            thread.decrement_upvotes()
         else:
-            if vote.is_positive:
-                comment.decrement_downvotes()
-            else:
-                comment.increment_upvotes()
-
+            thread.decrement_downvotes()
         cls.objects.get(pk=vote_id).delete()
-        return
+        return thread
 
-    def switch_vote_comment(self, comment):
-        if self.is_positive == True:
-            comment.switch_increment_downvotes()
+    @classmethod
+    def delete_comment_vote(cls, vote_id):
+        vote = cls.objects.get(pk=vote_id)
+        comment = vote.comment
+        if vote.is_positive:
+            comment.decrement_upvotes()
         else:
-            comment.switch_increment_upvotes()
+            comment.decrement_downvotes()
+        cls.objects.get(pk=vote_id).delete()
+        return comment
+
+    def switch_vote_comment(self):
+        if self.is_positive == True:
+            self.comment.switch_increment_downvotes()
+        else:
+            self.comment.switch_increment_upvotes()
         self.is_positive = not self.is_positive
         self.save()
-        return
+        return self.comment
 
-    def switch_vote_thread(self, thread):
+    def switch_vote_thread(self):
         if self.is_positive == True:
-            threadt.switch_increment_downvotes()
+            self.thread.switch_increment_downvotes()
         else:
-            thread.switch_increment_upvotes()
+            self.thread.switch_increment_upvotes()
         self.is_positive = not self.is_positive
         self.save()
-        return
-
+        return self.thread
 
 @receiver(post_save, sender=User)
 def create_user_profile(sender, instance, created, **kwargs):
@@ -218,31 +261,24 @@ def create_forum(sender, instance, created, **kwargs):
 def save_forum(sender, instance, **kwargs):
     instance.forum.save()
 
-@receiver(post_save, sender=Thread)
-def create_thread(sender, instance, created, **kwargs):
-    if created:
-        new_vote = Vote(user=instance.author, is_positive=True, thread=instance, comment=None)
-        new_vote.save()
-
 @receiver(post_save, sender=Comment)
-def create_comment(sender, instance, created, **kwargs):
+def increment_subtree_counts(sender, instance, created, **kwargs):
     if created:
-        new_vote = Vote(user=instance.author, is_positive=True, thread=None, comment=instance)
-        new_vote.save()
-
         post = instance
         if post.parent_post:
-            post.parent_post.num_childs += 1
+            post.parent_post.num_childs = F('num_childs') + 1
             post.parent_post.save()
+            post.parent_post.refresh_from_db()
         else:
-            post.parent_thread.num_childs += 1
+            post.parent_thread.num_childs = F('num_childs') + 1
             post.parent_thread.save()
+            post.parent_thread.refresh_from_db()
 
         post = instance
         while post.parent_post:
             post = post.parent_post
-            post.num_subtree_nodes += 1
+            post.num_subtree_nodes = F('num_subtree_nodes') + 1
             post.save()
 
-        post.parent_thread.num_subtree_nodes += 1
+        post.parent_thread.num_subtree_nodes = F('num_subtree_nodes') + 1
         post.parent_thread.save()

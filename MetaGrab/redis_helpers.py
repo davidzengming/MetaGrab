@@ -77,7 +77,7 @@ def transform_comment_to_redis_object(comment):
 def transform_vote_to_redis_object(vote):
     data = {
         "id": vote.id,
-        "user": vote.user,
+        "created:": convert_datetime_to_unix(vote.created),
         "thread": vote.thread.id if vote.thread != None else "",
         "comment": vote.comment.id if vote.comment != None else "",
         "is_positive": "1" if vote.is_positive else "0",
@@ -95,18 +95,37 @@ def redis_insert_threads_bulk(threads):
 
 def redis_insert_comments_bulk(comments):
     for comment in comments:
-        if comment.parent_thread != None:
-            redis_insert_comment(comment, comment.parent_thread.id)
-        else:
-            redis_insert_child_comment(comment)
+        redis_insert_comment_choose(comment)
+
+def redis_insert_comment_choose(comment):
+    if comment.parent_thread != None:
+        redis_insert_comment(comment, comment.parent_thread.id)
+    else:
+        redis_insert_child_comment(comment)
+
+def redis_insert_votes_bulk(votes):
+    for vote in votes:
+        redis_insert_vote(vote)
 
 def redis_insert_vote(vote):
     conn = get_redis_connection('default')
     redis_vote_object = transform_vote_to_redis_object(vote)
     conn.hmset("vote:" + str(vote.id), redis_vote_object)
 
-    conn.hmset("vote:user:thread:" + str(vote.thread.id), )
-    conn.hmset("vote:user:comment:" + str(vote.comment.id))
+    if vote.thread:
+        conn.hset("vote:user:" + str(vote.user.id), "thread:" + str(vote.thread.id), str(vote.id))
+    else:
+        conn.hset("vote:user:" + str(vote.user.id), "comment:" + str(vote.comment.id), str(vote.id))
+
+def redis_delete_vote(vote_id, user_id, is_thread, obj_id):
+    conn = get_redis_connection('default')
+    conn.delete("vote:" + str(vote_id))
+
+    if is_thread:
+        conn.hdel("vote:user:" + str(user_id), "thread:" + str(obj_id))
+    else:
+        conn.hdel("vote:user:" + str(user_id), "comment:" + str(obj_id))
+    return
 
 def redis_insert_game(game):
     conn = get_redis_connection('default')
@@ -116,6 +135,7 @@ def redis_insert_game(game):
 def redis_insert_thread(new_thread):
     redis_thread_object = transform_thread_to_redis_object(new_thread)
     conn = get_redis_connection('default')
+
     conn.hmset("thread:" + str(new_thread.id), redis_thread_object)
     conn.zadd("game:" + str(new_thread.forum.id) + ".ranking", {"thread:" + str(new_thread.id): hot(redis_thread_object["upvotes"], redis_thread_object["downvotes"], epoch_seconds(redis_thread_object["created"]))})
 
@@ -129,25 +149,19 @@ def redis_increment_tree_count_by_comment_id(new_comment_id):
         parent_post_id = parent_post_id if parent_post_id != "" else None
         return parent_thread_id, parent_post_id
 
-    print("Posted new comment: ", new_comment_id)
     parent_thread_id, parent_post_id = find_parent(new_comment_id)
     if parent_thread_id:
-        num_childs = int(conn.hget("thread:" + str(parent_thread_id), "num_childs").decode())
-        conn.hset("thread:" + str(parent_thread_id), "num_childs", num_childs + 1)
+        conn.hincrby("thread:" + str(parent_thread_id), "num_childs")
     else:
-        num_childs = int(conn.hget("comment:" + str(parent_post_id), "num_childs").decode())
-        conn.hset("comment:" + str(parent_post_id), "num_childs", num_childs + 1)
+        conn.hincrby("comment:" + str(parent_post_id), "num_childs")
 
     while parent_thread_id or parent_post_id:
         if parent_thread_id:
-            num_subtree_nodes = int(conn.hget("thread:" + str(parent_thread_id), "num_subtree_nodes").decode())
-            conn.hset("thread:" + str(parent_thread_id), "num_subtree_nodes", num_subtree_nodes + 1)
+            conn.hincrby("thread:" + str(parent_thread_id), "num_subtree_nodes")
             break
         else:
-            num_subtree_nodes = int(conn.hget("comment:" + str(parent_post_id), "num_subtree_nodes").decode())
-            conn.hset("comment:" + str(parent_post_id), "num_subtree_nodes", num_subtree_nodes + 1)
+            conn.hincrby("comment:" + str(parent_post_id), "num_subtree_nodes")
             parent_thread_id, parent_post_id = find_parent(parent_post_id)
-
     return
 
 def redis_insert_comment(new_comment, thread_id):
@@ -185,6 +199,26 @@ def redis_thread_serializer(thread_response):
 		    decoded_response[key.decode()] = serializer.data
 	return decoded_response
 
+def redis_vote_serializer(vote_response):
+    decoded_response = {}
+    for key, val in vote_response.items():
+        if key.decode() != "created":
+            decoded_response[key.decode()] = val.decode()
+        else:
+            decoded_response[key.decode()] = datetime.fromtimestamp(float(val.decode()), tz)
+
+        if key.decode() in {"id", "thread", "comment", "user"}:
+            if val.decode() != "":
+                decoded_response[key.decode()] = int(val.decode())
+            else:
+                decoded_response[key.decode()] = None
+
+        if key.decode() in {"is_positive"}:
+            decoded_response[key.decode()] = val.decode() in {"1", "True"}
+
+    return decoded_response
+
+
 def redis_comment_serializer(comment_response):
     decoded_response = {}
     for key, val in comment_response.items():
@@ -203,16 +237,24 @@ def redis_comment_serializer(comment_response):
 
     return decoded_response
 
-def redis_get_threads_by_game_id(game_id, start, count):
+def redis_get_threads_by_game_id(game_id, start, count, user_id):
     conn = get_redis_connection('default')
     encoded_threads = conn.zrevrange("game:" + str(game_id) + ".ranking", start, start + count - 1)
-    serializer = []
+    serializer, vote_serializer = [], []
     has_next_page = (start + count - 1) < conn.zcard("game:" + str(game_id) + ".ranking")
+    
 
     for encoded_thread in encoded_threads:
-        response = conn.hgetall(encoded_thread.decode())
+        decoded_thread = encoded_thread.decode()
+        response = conn.hgetall(decoded_thread)
         serializer.append(redis_thread_serializer(response))
-    return serializer, has_next_page
+
+        vote_id_response = conn.hget("vote:user:" + str(user_id), "thread:" + str(decoded_thread.split(":")[1]))
+        if vote_id_response != None:
+            vote_response = conn.hgetall("vote:" + vote_id_response.decode())
+            vote_serializer.append(redis_vote_serializer(vote_response))
+        
+    return serializer, has_next_page, vote_serializer
 
 def redis_get_comments_by_thread_id(thread_id, start, count):
     conn = get_redis_connection('default')
@@ -231,13 +273,14 @@ def redis_get_comments_by_parent_comment_id(parent_comment_id, start, count):
 
     for encoded_comment in encoded_comments:
         response = conn.hgetall(encoded_comment.decode())
-        serializer.append(redis_comment_serializer(response))
+        serializer.append(redis_comment_seiralizer(response))
     return serializer
 
-def redis_get_tree_by_parent_comments_id(roots, size, next_page_start, count, parent_comment_id):
+def redis_get_tree_by_parent_comments_id(roots, size, next_page_start, count, parent_comment_id, user_id):
     conn = get_redis_connection('default')
     queue = collections.deque(roots[::-1])
     comments_to_be_added = []
+    votes_to_be_added = []
 
     next_page_more_comments = conn.zrevrange("comment:" + str(parent_comment_id) + ".ranking", next_page_start + count, next_page_start + 2 * count - 1)
 
@@ -245,7 +288,12 @@ def redis_get_tree_by_parent_comments_id(roots, size, next_page_start, count, pa
         node = queue.pop()
         response = conn.hgetall("comment:" + str(node))
         comments_to_be_added.append(redis_comment_serializer(response))
-        
+
+        vote_id_response = conn.hget("vote:user:" + str(user_id), "comment:" + str(node))
+        if vote_id_response != None:
+            vote_response = conn.hgetall("vote:" + vote_id.decode())
+            votes_to_be_added.append(redis_vote_serializer(vote_response))
+
         size -= 1
         if size == 0:
             break
@@ -257,13 +305,14 @@ def redis_get_tree_by_parent_comments_id(roots, size, next_page_start, count, pa
 
     more_comments_response = [redis_comment_serializer(conn.hgetall("comment:" + str(node))) for node in list(reversed(queue))]
     next_page_more_comments_response = [redis_comment_serializer(conn.hgetall(encoded_comment.decode())) for encoded_comment in next_page_more_comments]
-    return comments_to_be_added, more_comments_response + next_page_more_comments_response
+    return comments_to_be_added, more_comments_response + next_page_more_comments_response, votes_to_be_added
 
-def redis_get_tree_by_parent_thread_id(roots, size, next_page_start, count, parent_thread_id):
+def redis_get_tree_by_parent_thread_id(roots, size, next_page_start, count, parent_thread_id, user_id):
     conn = get_redis_connection('default')
     queue = []
     comments_to_be_added = []
     next_page_more_comments = []
+    votes_to_be_added = []
 
     if next_page_start == 0:
         queue = collections.deque([int(encoded_comment.decode().split(":")[1]) for encoded_comment in conn.zrevrange("thread:" + str(parent_thread_id) + ".ranking", 0, count - 1)])
@@ -276,6 +325,11 @@ def redis_get_tree_by_parent_thread_id(roots, size, next_page_start, count, pare
         node = queue.pop()
         response = conn.hgetall("comment:" + str(node))
         comments_to_be_added.append(redis_comment_serializer(response))
+
+        vote_id_response = conn.hget("vote:user:" + str(user_id), "comment:" + str(node))
+        if vote_id_response != None:
+            vote_response = conn.hgetall("vote:" + vote_id_response.decode())
+            votes_to_be_added.append(redis_vote_serializer(vote_response))
         
         size -= 1
         if size == 0:
@@ -288,7 +342,7 @@ def redis_get_tree_by_parent_thread_id(roots, size, next_page_start, count, pare
 
     more_comments_response = [redis_comment_serializer(conn.hgetall("comment:" + str(node))) for node in list(reversed(queue))]
     next_page_more_comments_response = [redis_comment_serializer(conn.hgetall(encoded_comment.decode())) for encoded_comment in next_page_more_comments]
-    return comments_to_be_added, more_comments_response + next_page_more_comments_response
+    return comments_to_be_added, more_comments_response + next_page_more_comments_response, votes_to_be_added
 
 def flush_redis():
     conn = get_redis_connection('default')
