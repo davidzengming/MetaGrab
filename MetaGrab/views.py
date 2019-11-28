@@ -14,7 +14,6 @@ from . import redis_helpers
 from django_redis import get_redis_connection
 import json, datetime
 
-
 class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
     def validate(self, attrs):
         data = super().validate(attrs)
@@ -95,10 +94,11 @@ class ThreadViewSet(viewsets.ModelViewSet):
         title = body['title']
         flair = body['flair']
         content = body['content']
+        image_url = body['image_url']
         user_id = request.user.id
         user = User.objects.get(pk=user_id)
 
-        new_thread = Thread.create(flair=flair, title=title, content=content, author=User.objects.get(pk=user_id), forum=forum)
+        new_thread = Thread.create(flair=flair, title=title, content=content, author=User.objects.get(pk=user_id), forum=forum, image_url=image_url)
         redis_helpers.redis_insert_thread(new_thread)
         new_vote = Vote.create(user, True, new_thread, None)
         redis_helpers.redis_insert_vote(new_vote)

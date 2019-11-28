@@ -67,10 +67,11 @@ class Thread(Votable):
     )
     title = models.TextField(max_length = 200)
     forum = models.ForeignKey(Forum, on_delete=models.CASCADE)
+    image_url = models.URLField(default=None)
 
     @classmethod
-    def create(cls, flair, title, content, author, forum):
-        thread = cls.objects.create(flair=flair, title=title, content=content, author=author, forum=forum)
+    def create(cls, flair, title, content, author, forum, image_url):
+        thread = cls.objects.create(flair=flair, title=title, content=content, author=author, forum=forum, image_url=image_url)
         return thread
 
     def increment_upvotes(self):

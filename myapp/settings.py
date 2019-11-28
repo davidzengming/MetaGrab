@@ -32,6 +32,7 @@ ALLOWED_HOSTS = []
 # Application definition
 
 INSTALLED_APPS = [
+    'cloudinary',
     'rest_framework.authtoken',
     'MetaGrab.apps.MetagrabConfig',
     'rest_framework',

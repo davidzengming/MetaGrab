@@ -54,6 +54,7 @@ def transform_thread_to_redis_object(thread):
 	    "created": convert_datetime_to_unix(thread.created),
         "num_childs": thread.num_childs,
         "num_subtree_nodes": thread.num_subtree_nodes,
+        "image_url": thread.image_url,
     }
 
     return data
@@ -157,9 +158,7 @@ def redis_increment_tree_count_by_comment_id(new_comment_id):
 
     while parent_thread_id or parent_post_id:
         if parent_thread_id:
-            print("before: ", conn.hget("thread:" + str(parent_thread_id), "num_subtree_nodes"))
             conn.hincrby("thread:" + str(parent_thread_id), "num_subtree_nodes", 1)
-            print("after: ", conn.hget("thread:" + str(parent_thread_id), "num_subtree_nodes"))
             break
         else:
             conn.hincrby("comment:" + str(parent_post_id), "num_subtree_nodes", 1)
@@ -247,10 +246,6 @@ def redis_get_threads_by_game_id(game_id, start, count, user_id):
     encoded_threads = conn.zrevrange("game:" + str(game_id) + ".ranking", start, start + count - 1)
     serializer, vote_serializer = [], []
     has_next_page = (start + count - 1) < conn.zcard("game:" + str(game_id) + ".ranking")
-
-    print(has_next_page)
-    print(start + count - 1, conn.zcard("game:" + str(game_id) + ".ranking"))
-    
 
     for encoded_thread in encoded_threads:
         decoded_thread = encoded_thread.decode()
