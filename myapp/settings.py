@@ -104,7 +104,7 @@ CACHES = {
         "KEY_PREFIX": "metagrab-cache"
     }
 }
-SESSION_ENGINE = "django.contrib.sessions.backends.signed_cookies"
+SESSION_ENGINE = "django.contrib.sessions.backends.cache"
 
 # Password validation
 # https://docs.djangoproject.com/en/2.2/ref/settings/#auth-password-validators

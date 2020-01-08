@@ -24,10 +24,12 @@ class Game(models.Model):
     created = models.DateTimeField(default=now, editable=False)
     name = models.CharField(max_length = 100)
     release_date = models.DateField()
+    next_expansion_release_date = models.DateField(default=None, blank=True, null=True)
     developer = models.ForeignKey(Developer, on_delete=models.CASCADE)
     genre = models.ForeignKey(Genre, on_delete=models.CASCADE)
     last_updated = models.DateField()
     icon = models.URLField(default="https://images2.alphacoders.com/474/thumb-1920-474206.jpg")
+    banner = models.URLField(max_length=500, default="https://res.cloudinary.com/dzengcdn/image/upload/c_fill,g_auto,h_250,w_970/b_rgb:000000,e_gradient_fade,y_-0.50/c_scale,co_rgb:ffffff,fl_relative/v1575913613/dota2_tkcbuh.jpg")
 
     def __str__(self):
         return self.name
@@ -194,53 +196,81 @@ User.add_to_class("__str__", get_first_name)
 class Vote(models.Model):
     created = models.DateTimeField(default=now, editable=False)
     user = models.ForeignKey(User, on_delete=models.PROTECT)
-    is_positive = models.BooleanField(blank=False)
+
+    TYPE_DOWNVOTE = -1
+    TYPE_UNVOTE = 0
+    TYPE_UPVOTE = 1
+    TYPE_DIRECTION = (
+        (TYPE_DOWNVOTE, -1),
+        (TYPE_UNVOTE, 0),
+        (TYPE_UPVOTE, 1),
+    )
+
+    direction = models.IntegerField(
+        choices=TYPE_DIRECTION,
+        default=TYPE_UPVOTE,
+    )
+
     thread = models.ForeignKey(Thread, on_delete=models.CASCADE, null=True, blank=True)
     comment = models.ForeignKey(Comment, on_delete=models.CASCADE, null=True, blank=True)
 
     @classmethod
-    def create(cls, user, is_positive, thread, comment):
-        vote = cls.objects.create(user=user, is_positive=is_positive, thread=thread, comment=comment)
+    def create(cls, user, direction, thread, comment):
+        vote = cls.objects.create(user=user, direction=direction, thread=thread, comment=comment)
         return vote
 
     @classmethod
     def delete_thread_vote(cls, vote_id):
         vote = cls.objects.get(pk=vote_id)
-
         thread = vote.thread
-        if vote.is_positive:
+        if vote.direction == 1:
             thread.decrement_upvotes()
-        else:
+        elif vote.direction == -1:
             thread.decrement_downvotes()
-        cls.objects.get(pk=vote_id).delete()
+        else:
+            print("Error should not be unvoted.", vote_id)
+
+        vote.direction = 0
+        vote.save()
         return thread
 
     @classmethod
     def delete_comment_vote(cls, vote_id):
         vote = cls.objects.get(pk=vote_id)
         comment = vote.comment
-        if vote.is_positive:
+        if vote.direction == 1:
             comment.decrement_upvotes()
         else:
             comment.decrement_downvotes()
-        cls.objects.get(pk=vote_id).delete()
+        vote.direction = 0
+        vote.save()
         return comment
 
+    def set_upvote(self):
+        self.direction = 1
+        self.save()
+        return
+    def set_downvote(self):
+        self.direction = -1
+        self.save()
+        return
+
     def switch_vote_comment(self):
-        if self.is_positive == True:
+        if self.direction == 1:
             self.comment.switch_increment_downvotes()
         else:
             self.comment.switch_increment_upvotes()
-        self.is_positive = not self.is_positive
+
+        self.direction *= -1
         self.save()
         return self.comment
 
     def switch_vote_thread(self):
-        if self.is_positive == True:
+        if self.direction == 1:
             self.thread.switch_increment_downvotes()
         else:
             self.thread.switch_increment_upvotes()
-        self.is_positive = not self.is_positive
+        self.direction *= -1
         self.save()
         return self.thread
 
