@@ -102,19 +102,23 @@ class ThreadViewSet(viewsets.ModelViewSet):
         forum = Forum.objects.get(pk=game_id)
         body_unicode = request.body.decode('utf-8')
         body = json.loads(body_unicode)
+
         title = body['title']
         flair = body['flair']
-        content = body['content']
+        content_string = body['content_string']
+        content_attributes = body['content_attributes']
         image_url = body['image_url']
         user_id = request.user.id
         user = User.objects.get(pk=user_id)
 
-        new_thread = Thread.create(flair=flair, title=title, content=content, author=User.objects.get(pk=user_id), forum=forum, image_url=image_url)
+        new_thread = Thread.create(flair=flair, title=title, content_string=content_string, content_attributes=content_attributes, author=User.objects.get(pk=user_id), forum=forum, image_url=image_url)
         new_vote = Vote.create(user, 1, new_thread, None)
 
         new_redis_thread = redis_helpers.redis_insert_thread(new_thread)
         new_redis_vote = redis_helpers.redis_insert_vote(new_vote)
         redis_user = redis_helpers.redis_get_user_by_id(user_id)
+
+        print(new_redis_thread, "redis_thread")
 
         return Response({"thread_response": new_redis_thread, "vote_response": new_redis_vote, "user_response": redis_user})
 
@@ -350,15 +354,18 @@ class CommentViewSet(viewsets.ModelViewSet):
         parent_thread = Thread.objects.get(pk=thread_id)
         body_unicode = request.body.decode('utf-8')
         body = json.loads(body_unicode)
-        content = body['content']
+        content_string = body['content_string']
+        content_attributes = body['content_attributes']
         user_id = request.user.id
         user = User.objects.get(pk=user_id)
-        new_comment = Comment.create(parent_thread=parent_thread, parent_post=None, content=content, author=user)
+        new_comment = Comment.create(parent_thread=parent_thread, parent_post=None, content_string=content_string, content_attributes=content_attributes, author=user)
         new_vote = Vote.create(user, 1, None, new_comment)
 
         new_redis_comment = redis_helpers.redis_insert_comment(new_comment, thread_id, True)
         new_redis_vote = redis_helpers.redis_insert_vote(new_vote)
         redis_user = redis_helpers.redis_get_user_by_id(user_id)
+
+        print(new_redis_comment, "redis_comment")
 
         return Response({"comment_response": new_redis_comment, "vote_response": new_redis_vote, "user_response": redis_user})
 
@@ -376,11 +383,12 @@ class CommentViewSet(viewsets.ModelViewSet):
         parent_comment = Comment.objects.get(pk=parent_comment_id)
         body_unicode = request.body.decode('utf-8') 
         body = json.loads(body_unicode)
-        content = body['content']
+        content_string = body['content_string']
+        content_attributes = body['content_attributes']
         user_id = request.user.id
         user = User.objects.get(pk=user_id)
 
-        new_child_comment = Comment.create(parent_thread=None, parent_post=parent_comment, content=content, author=user)
+        new_child_comment = Comment.create(parent_thread=None, parent_post=parent_comment, content_string=content_string, content_attributes=content_attributes, author=user)
         new_vote = Vote.create(user, 1, None, new_child_comment)
 
         new_redis_comment = redis_helpers.redis_insert_child_comment(new_child_comment, True)
@@ -446,7 +454,6 @@ class RedisServices(viewsets.GenericViewSet):
         redis_helpers.redis_insert_threads_bulk(threads)
         redis_helpers.redis_insert_comments_bulk(comments)
         redis_helpers.redis_insert_users_bulk(users)
-
         redis_helpers.redis_insert_votes_bulk(votes)
 
         users = User.objects.all()

@@ -8,6 +8,7 @@ from math import log
 from time import mktime
 import pytz, collections
 from django_redis import get_redis_connection
+import json
 
 epoch_seconds_1970 = datetime(1970, 1, 1, 0, 0).timestamp()
 tz = pytz.timezone('America/Toronto')
@@ -63,6 +64,7 @@ def transform_genre_to_redis_object(genre):
 	return data
 
 def transform_thread_to_redis_object(thread):
+
 	data = {
 		"id": thread.id,
 		"flair": thread.flair,
@@ -73,7 +75,8 @@ def transform_thread_to_redis_object(thread):
 		"author": thread.author.id,
 		"upvotes": thread.upvotes,
 		"downvotes": thread.downvotes,
-		"content": thread.content,
+		"content_string": thread.content_string,
+		"content_attributes": json.dumps(thread.content_attributes),
 		"created": convert_datetime_to_unix(thread.created),
 		"num_childs": thread.num_childs,
 		"num_subtree_nodes": thread.num_subtree_nodes,
@@ -88,7 +91,8 @@ def transform_comment_to_redis_object(comment):
 		"upvotes": comment.upvotes,
 		"downvotes": comment.downvotes,
 		"created": convert_datetime_to_unix(comment.created),
-		"content": comment.content,
+		"content_string": comment.content_string,
+		"content_attributes": json.dumps(comment.content_attributes),
 		"author": comment.author.id,
 		"parent_thread": comment.parent_thread.id if comment.parent_thread != None else "",
 		"parent_post": comment.parent_post.id if comment.parent_post != None else "",
@@ -274,8 +278,11 @@ def redis_thread_serializer(thread_response):
 			forum = Forum.objects.get(pk=int(val.decode()))
 			serializer = ForumSerializer(forum, many=False)
 			decoded_response[key.decode()] = serializer.data
+		elif key.decode() == "content_attributes":
+			decoded_response[key.decode()] = json.loads(val.decode())
 		else:
 			decoded_response[key.decode()] = val.decode()
+
 	return decoded_response
 
 def redis_vote_serializer(vote_response):
@@ -364,6 +371,8 @@ def redis_comment_serializer(comment_response):
 				decoded_response[key.decode()] = None
 			else:
 				decoded_response[key.decode()] = int(val.decode())
+		elif key.decode() == "content_attributes":
+			decoded_response[key.decode()] = json.loads(val.decode())
 		else:
 			decoded_response[key.decode()] = val.decode()
 

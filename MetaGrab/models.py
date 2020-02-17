@@ -1,4 +1,5 @@
 from django.db import models
+from django_mysql.models import JSONField
 from django.contrib.auth.models import User, Group
 from django.db.models.signals import post_save
 from django.dispatch import receiver
@@ -48,7 +49,8 @@ class Votable(models.Model):
     author = models.ForeignKey(User, on_delete=models.PROTECT)
     upvotes = models.IntegerField(default=1)
     downvotes = models.IntegerField(default=0)
-    content = models.TextField(max_length = 40000)
+    content_string = models.TextField(max_length = 40000)
+    content_attributes = JSONField()
 
     num_childs = models.IntegerField(default = 0)
     num_subtree_nodes = models.IntegerField(default = 0)
@@ -72,8 +74,8 @@ class Thread(Votable):
     image_url = models.URLField(default=None)
 
     @classmethod
-    def create(cls, flair, title, content, author, forum, image_url):
-        thread = cls.objects.create(flair=flair, title=title, content=content, author=author, forum=forum, image_url=image_url)
+    def create(cls, flair, title, content_string, content_attributes, author, forum, image_url):
+        thread = cls.objects.create(flair=flair, title=title, content_string=content_string, content_attributes=content_attributes, author=author, forum=forum, image_url=image_url)
         return thread
 
     def increment_upvotes(self):
@@ -122,8 +124,8 @@ class Comment(Votable):
     parent_post = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True)
     
     @classmethod
-    def create(cls, parent_thread, parent_post, content, author):
-        comment = cls.objects.create(parent_thread=parent_thread, parent_post=parent_post, content=content, author=author)
+    def create(cls, parent_thread, parent_post, content_string, content_attributes, author):
+        comment = cls.objects.create(parent_thread=parent_thread, parent_post=parent_post, content_string=content_string, content_attributes=content_attributes, author=author)
         return comment
 
     def increment_upvotes(self):
@@ -165,7 +167,7 @@ class Comment(Votable):
         return self
 
     def __str__(self):
-        return self.content
+        return self.content_string
 
 class UserProfile(models.Model):
     created = models.DateTimeField(default=now, editable=False)
