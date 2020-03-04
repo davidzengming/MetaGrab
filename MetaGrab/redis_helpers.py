@@ -80,7 +80,7 @@ def transform_thread_to_redis_object(thread):
 		"created": convert_datetime_to_unix(thread.created),
 		"num_childs": thread.num_childs,
 		"num_subtree_nodes": thread.num_subtree_nodes,
-		"image_url": thread.image_url,
+		"image_urls": json.dumps(thread.image_urls),
 	}
 
 	return data
@@ -278,7 +278,7 @@ def redis_thread_serializer(thread_response):
 			forum = Forum.objects.get(pk=int(val.decode()))
 			serializer = ForumSerializer(forum, many=False)
 			decoded_response[key.decode()] = serializer.data
-		elif key.decode() == "content_attributes":
+		elif key.decode() in {"content_attributes", "image_urls"}:
 			decoded_response[key.decode()] = json.loads(val.decode())
 		else:
 			decoded_response[key.decode()] = val.decode()

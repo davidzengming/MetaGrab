@@ -107,18 +107,16 @@ class ThreadViewSet(viewsets.ModelViewSet):
         flair = body['flair']
         content_string = body['content_string']
         content_attributes = body['content_attributes']
-        image_url = body['image_url']
+        image_urls = body['image_urls']
         user_id = request.user.id
         user = User.objects.get(pk=user_id)
 
-        new_thread = Thread.create(flair=flair, title=title, content_string=content_string, content_attributes=content_attributes, author=User.objects.get(pk=user_id), forum=forum, image_url=image_url)
+        new_thread = Thread.create(flair=flair, title=title, content_string=content_string, content_attributes=content_attributes, author=User.objects.get(pk=user_id), forum=forum, image_urls=image_urls)
         new_vote = Vote.create(user, 1, new_thread, None)
 
         new_redis_thread = redis_helpers.redis_insert_thread(new_thread)
         new_redis_vote = redis_helpers.redis_insert_vote(new_vote)
         redis_user = redis_helpers.redis_get_user_by_id(user_id)
-
-        print(new_redis_thread, "redis_thread")
 
         return Response({"thread_response": new_redis_thread, "vote_response": new_redis_vote, "user_response": redis_user})
 
