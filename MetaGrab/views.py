@@ -20,7 +20,8 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
         refresh = self.get_token(self.user)
         data['refresh'] = str(refresh)
         data['access'] = str(refresh.access_token)
-        
+        data['user_id'] = self.user.id
+
         # Add extra responses here
         # data['user'] = Users.objects.get(pk=self.user.user_id)
         # data['groups'] = self.user.groups.values_list('name', flat=True)
@@ -129,7 +130,53 @@ class ThreadViewSet(viewsets.ModelViewSet):
 
         if game_id:
             threads_response, has_next_page, votes_response, users_response = redis_helpers.redis_get_threads_by_game_id(game_id, start, count, user_id)
-            return Response({"threads_response": threads_response, "has_next_page": has_next_page, "votes_response": votes_response, "users_response": users_response})
+            return Response({"threads_response": threads_response, "has_next_page": has_next_page, "votes_response": votes_response, "users_response": users_response, "user_id": user_id})
+
+
+class EmojiViewSet(viewsets.ModelViewSet):
+    @action(detail=False, methods=['post'])
+    def add_new_emoji_by_thread_id(self, request):
+        body_unicode = request.body.decode('utf-8')
+        body = json.loads(body_unicode)
+        thread_id = body['thread_id']
+        emoji_id = body['emoji_id']
+        user_id = request.user.id
+
+        is_success, new_emoji_count = redis_helpers.redis_add_emoji_by_thread_and_user_id(emoji_id, thread_id, user_id)
+        return Response({"is_success": is_success, "new_emoji_count": new_emoji_count})
+
+    @action(detail=False, methods=['post'])
+    def add_new_emoji_by_comment_id(self, request):
+        body_unicode = request.body.decode('utf-8')
+        body = json.loads(body_unicode)
+        comment_id = body['comment_id']
+        emoji_id = body['emoji_id']
+        user_id = request.user.id
+
+        is_success, new_emoji_count = redis_helpers.redis_add_emoji_by_comment_and_user_id(emoji_id, comment_id, user_id)
+        return Response({"is_success": is_success, "new_emoji_count": new_emoji_count})
+
+    @action(detail=False, methods=['post'])
+    def deleteEmojiByThreadId(self, request):
+        body_unicode = request.body.decode('utf-8')
+        body = json.loads(body_unicode)
+        thread_id = body['thread_id']
+        emoji_id = body['emoji_id']
+        user_id = request.user.id
+
+        is_success, new_emoji_count = redis_helpers.redis_remove_emoji_by_thread_and_user_id(emoji_id, thread_id, user_id)
+        return Response({"is_success": is_success, "new_emoji_count": new_emoji_count})
+
+    @action(detail=False, methods=['post'])
+    def deleteEmojiByCommentId(self, request):
+        body_unicode = request.body.decode('utf-8')
+        body = json.loads(body_unicode)
+        comment_id = body['comment_id']
+        emoji_id = body['emoji_id']
+        user_id = request.user.id
+
+        is_success, new_emoji_count = redis_helpers.redis_remove_emoji_by_comment_and_user_id(emoji_id, comment_id, user_id)
+        return Response({"is_success": is_success, "new_emoji_count": new_emoji_count})
 
 class VoteViewSet(viewsets.ModelViewSet):
     queryset = Vote.objects.all()

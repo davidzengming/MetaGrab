@@ -15,6 +15,7 @@ router.register(r'users_profile', views.UserProfileViewSet)
 router.register(r'groups', views.GroupViewSet)
 router.register(r'comments', views.CommentViewSet)
 router.register(r'votes', views.VoteViewSet)
+router.register(r'emojis', views.EmojiViewSet, basename='emojis')
 router.register(r'redis', views.RedisServices, basename='redis')
 
 from rest_framework_simplejwt.views import (
@@ -25,6 +26,6 @@ from rest_framework_simplejwt.views import (
 urlpatterns = [
     path('', include(router.urls)),
     path('api-auth/', include('rest_framework.urls', namespace='rest_framework')),
-    url(r'^api/token/$', TokenObtainPairView.as_view(), name='token_obtain_pair'),
+    url(r'^api/token/$', views.MyTokenObtainPairView.as_view(), name='token_obtain_pair'),
     url(r'^api/token/refresh/$', TokenRefreshView.as_view(), name='token_refresh'),
 ]

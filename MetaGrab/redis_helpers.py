@@ -9,6 +9,7 @@ from time import mktime
 import pytz, collections
 from django_redis import get_redis_connection
 import json
+import time
 
 epoch_seconds_1970 = datetime(1970, 1, 1, 0, 0).timestamp()
 tz = pytz.timezone('America/Toronto')
@@ -136,7 +137,7 @@ def redis_insert_comments_bulk(comments):
 
 def redis_insert_users_bulk(users):
 	for user in users:
-		redis_insert_user(user)
+		redis_insert_user(user) 
 
 def redis_insert_comment_choose(comment, is_new):
 	if comment.parent_thread != None:
@@ -266,8 +267,52 @@ def redis_insert_child_comment(new_secondary_comment, is_new):
 
 	return redis_comment_serializer(conn.hgetall("comment:" + str(new_secondary_comment.id)))
 
+def redis_add_emoji_by_thread_and_user_id(emoji_id, thread_id, user_id):
+	conn = get_redis_connection('default')
+
+	if conn.zcard("thread:" + str(thread_id) + ":emojis") == 10:
+		return False, None
+
+	conn.zadd("thread:" + str(thread_id) + ":emojis", {"emoji:" + str(emoji_id): time.time()}, True)
+	conn.zadd("thread:" + str(thread_id) + ":emoji:" + str(emoji_id) + ":users", {"user:" + str(user_id): time.time()})
+
+	return True, conn.zcard("thread:" + str(thread_id) + ":emoji:" + str(emoji_id) + ":users")
+
+def redis_remove_emoji_by_thread_and_user_id(emoji_id, comment_id, user_id):
+	conn = get_redis_connection('default')
+
+	conn.zrem("thread:" + str(thread_id) + ":emoji:" + str(emoji_id) + ":users", "user:" + str(user.id))
+
+	emoji_count = conn.zcard("thread:" + str(thread_id) + ":emoji:" + str(emoji_id) + ":users")
+	if emoji_count == 0:
+		conn.zrem("thread:" + str(thread_id) + ":emojis", "emoji:" + str(emoji_id))
+
+	return True, emoji_count
+
+def redis_add_emoji_by_comment_and_user_id(emoji_id, comment_id, user_id):
+	conn = get_redis_connection('default')
+
+	if conn.zcard("comment:" + str(comment_id) + ":emojis") == 10:
+		return False, None
+
+	conn.zadd("comment:" + str(comment_id) + ":emojis", {"emoji:" + str(emoji_id): time.time()}, True)
+	conn.zadd("comment:" + str(comment_id) + ":emoji:" + str(emoji_id) + ":users", {"user:" + str(user.id): time.time()})
+
+	return True, conn.zcard("comment:" + str(comment_id) + ":emoji:" + str(emoji_id) + ":users")
+
+def redis_remove_emoji_by_comment_and_user_id(emoji_id, comment_id, user_id):
+	conn = get_redis_connection('default')
+	conn.zrem("comment:" + str(comment_id) + ":emoji:" + str(emoji_id) + ":users", "user:" + str(user.id))
+
+	emoji_count = conn.zcard("comment:" + str(comment_id) + ":emoji:" + str(emoji_id) + ":users")
+	if emoji_count == 0:
+		conn.zrem("comment:" + str(comment_id) + ":emojis", "emoji:" + str(emoji_id))
+
+	return True, emoji_count
+
 def redis_thread_serializer(thread_response):
 	decoded_response = {}
+
 	for key, val in thread_response.items():
 		if key.decode() == "created":
 			decoded_response[key.decode()] = datetime.fromtimestamp(float(val.decode()), tz).strftime('%Y-%m-%dT%H:%M:%S')
@@ -383,7 +428,6 @@ def redis_user_serializer(user_response):
 
 	for key, val in user_response.items():
 		if key.decode() == "created":
-			print(key.decode(), datetime.fromtimestamp(float(val.decode()), tz).strftime('%Y-%m-%dT%H:%M:%S'))
 			decoded_response[key.decode()] = datetime.fromtimestamp(float(val.decode()), tz).strftime('%Y-%m-%dT%H:%M:%S')
 		elif key.decode() in {"id"}:
 			decoded_response[key.decode()] = int(val.decode())
@@ -463,6 +507,39 @@ def redis_get_games_by_release_range(start_year, start_month, end_year, end_mont
 
 	return serializer
 
+def redis_generate_emojis_response(decoded_prefix, encoded_users, user_id):
+	conn = get_redis_connection('default')
+	encoded_emojis = conn.zrange(str(decoded_prefix) + ":emojis", 0, 9)
+		
+	user_ids_arr_per_emoji_dict = collections.defaultdict(list)
+
+	emojis_id_arr = []
+	emoji_reaction_count_dict = {}
+
+	for encoded_emoji in encoded_emojis:
+		decoded_emoji = encoded_emoji.decode()
+		emoji_id = int(decoded_emoji.split(":")[1])
+		emojis_id_arr.append(emoji_id)
+
+		user_ids_arr_per_emoji_dict[emoji_id] = []
+		
+		top_3_encoded_users_reacted_with_emoji = conn.zrange(decoded_prefix + ":emoji:" + str(emoji_id), 0, 2)
+		emoji_reaction_count = conn.zcard(decoded_prefix + ":emoji:" + str(emoji_id))
+		emoji_reaction_count_dict[emoji_id] = emoji_reaction_count
+
+		user_exists_in_reaction = conn.zscore(decoded_prefix + ":emoji:" + str(emoji_id), "user:" + str(user_id))
+		if user_exists_in_reaction != None:
+			user_ids_arr_per_emoji_dict[emoji_id].append(user_id)
+
+		for encoded_user in top_3_encoded_users_reacted_with_emoji:
+			if encoded_user == user_id.encode():
+				continue
+
+			encoded_authors.add(encoded_user)
+			user_ids_arr_per_emoji_dict[emoji_id].append(encoded_user.decode())
+
+	return emojis_id_arr, user_ids_arr_per_emoji_dict, emoji_reaction_count_dict, encoded_users
+
 def redis_get_threads_by_game_id(game_id, start, count, user_id):
 	conn = get_redis_connection('default')
 	encoded_threads = conn.zrevrange("game:" + str(game_id) + ".ranking", start, start + count - 1)
@@ -470,12 +547,17 @@ def redis_get_threads_by_game_id(game_id, start, count, user_id):
 	has_next_page = (start + count - 1) < conn.zcard("game:" + str(game_id) + ".ranking")
 
 	encoded_authors = set()
+
 	for encoded_thread in encoded_threads:
 		decoded_thread = encoded_thread.decode()
 		response = conn.hgetall(decoded_thread)
-
 		encoded_authors.add(response["author".encode()])
-		serializer.append(redis_thread_serializer(response))
+
+		serialized_thread = redis_thread_serializer(response)
+		emojis_id_arr, user_ids_arr_per_emoji_dict, emoji_reaction_count_dict, encoded_authors = redis_generate_emojis_response(decoded_thread, encoded_authors, user_id)
+
+		serialized_thread["emojis"] = {"emojis_id_arr": emojis_id_arr, "user_ids_arr_per_emoji_dict": user_ids_arr_per_emoji_dict, "emoji_reaction_count_dict": emoji_reaction_count_dict}
+		serializer.append(serialized_thread)
 
 		vote_id_response = conn.hget("vote:user:" + str(user_id), "thread:" + str(decoded_thread.split(":")[1]))
 		if vote_id_response != None:
@@ -483,6 +565,7 @@ def redis_get_threads_by_game_id(game_id, start, count, user_id):
 			vote_serializer.append(redis_vote_serializer(vote_response))
 	
 	user_serializer = []
+
 	for encoded_author in encoded_authors:
 		user_response = conn.hgetall("user:" + encoded_author.decode())
 		user_serializer.append(redis_user_serializer(user_response))
@@ -533,9 +616,16 @@ def redis_get_tree_by_parent_comments_id(roots, size, next_page_start, count, pa
 	encoded_authors = set()
 	while queue and size > 0:
 		node = queue.pop()
-		response = conn.hgetall("comment:" + str(node))
+
+		prefix = "comment:" + str(node)
+		response = conn.hgetall(prefix)
 		encoded_authors.add(response["author".encode()])
-		comments_to_be_added.append(redis_comment_serializer(response))
+
+		serialized_comment = redis_comment_serializer(response)
+		emojis_id_arr, user_ids_arr_per_emoji_dict, emoji_reaction_count_dict, encoded_authors = redis_generate_emojis_response(prefix, encoded_authors, user_id)
+		serialized_comment["emojis"] = {"emojis_id_arr": emojis_id_arr, "user_ids_arr_per_emoji_dict": user_ids_arr_per_emoji_dict, "emoji_reaction_count_dict": emoji_reaction_count_dict}
+
+		comments_to_be_added.append(serialized_comment)
 
 		vote_id_response = conn.hget("vote:user:" + str(user_id), "comment:" + str(node))
 		if vote_id_response != None:
@@ -578,10 +668,15 @@ def redis_get_tree_by_parent_thread_id(roots, size, next_page_start, count, pare
 	encoded_authors = set()
 	while queue and size > 0:
 		node = queue.pop()
-		response = conn.hgetall("comment:" + str(node))
+		prefix = "comment:" + str(node)
+		response = conn.hgetall(prefix)
 		encoded_authors.add(response["author".encode()])
-		comments_to_be_added.append(redis_comment_serializer(response))
 
+		serialized_comment = redis_comment_serializer(response)
+		emojis_id_arr, user_ids_arr_per_emoji_dict, emoji_reaction_count_dict, encoded_authors = redis_generate_emojis_response(prefix, encoded_authors, user_id)
+		serialized_comment["emojis"] = {"emojis_id_arr": emojis_id_arr, "user_ids_arr_per_emoji_dict": user_ids_arr_per_emoji_dict, "emoji_reaction_count_dict": emoji_reaction_count_dict}
+
+		comments_to_be_added.append(serialized_comment)
 		vote_id_response = conn.hget("vote:user:" + str(user_id), "comment:" + str(node))
 		if vote_id_response != None:
 			vote_response = conn.hgetall("vote:" + vote_id_response.decode())
