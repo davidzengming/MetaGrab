@@ -137,7 +137,7 @@ def redis_insert_comments_bulk(comments):
 
 def redis_insert_users_bulk(users):
 	for user in users:
-		redis_insert_user(user) 
+		redis_insert_user(user)
 
 def redis_insert_comment_choose(comment, is_new):
 	if comment.parent_thread != None:
@@ -147,17 +147,30 @@ def redis_insert_comment_choose(comment, is_new):
 
 def redis_insert_votes_bulk(votes):
 	for vote in votes:
-		redis_insert_vote(vote)
+		is_thread = (vote.comment == None)
 
-def redis_insert_vote(vote):
+		if is_thread:
+			redis_insert_vote(vote, vote.thread.id, None)
+		else:
+			redis_insert_vote(vote, None, vote.comment.id)
+
+def redis_insert_vote(vote, thread_id, comment_id):
 	conn = get_redis_connection('default')
 	redis_vote_object = transform_vote_to_redis_object(vote)
 	conn.hmset("vote:" + str(vote.id), redis_vote_object)
 
+	should_add_emoji = False if vote.direction == 0 else True
+
 	if vote.thread:
 		conn.hset("vote:user:" + str(vote.user.id), "thread:" + str(vote.thread.id), str(vote.id))
+
+		if should_add_emoji:
+			redis_add_emoji_by_thread_and_user_id(0 if vote.direction == 1 else 1, thread_id, vote.user.id)
 	else:
 		conn.hset("vote:user:" + str(vote.user.id), "comment:" + str(vote.comment.id), str(vote.id))
+
+		if should_add_emoji:
+			redis_add_emoji_by_comment_and_user_id(0 if vote.direction == 1 else 1, comment_id, vote.user.id)
 
 	return redis_vote_serializer(conn.hgetall("vote:" + str(vote.id)))
 
@@ -166,28 +179,59 @@ def redis_insert_user(user):
 	redis_user_object = transform_user_to_redis_object(user)
 	conn.hmset("user:" + str(user.id), redis_user_object)
 
-def redis_unvote(vote_id):
+def redis_unvote(vote_id, thread_id, comment_id, user_id, original_vote_direction):
 	conn = get_redis_connection('default')
 	conn.hset("vote:" + str(vote_id), "direction", "0")
+
+	if thread_id != None:
+		is_success, count = redis_remove_emoji_by_thread_and_user_id(0 if original_vote_direction == 1 else 1, thread_id, user_id)
+	else:
+		is_success, count = redis_remove_emoji_by_comment_and_user_id(0 if original_vote_direction == 1 else 1, comment_id, user_id)
 	return
 
-def redis_set_upvote(vote_id):
+def redis_set_upvote(vote_id, thread_id, comment_id, user_id):
 	conn = get_redis_connection('default')
 	conn.hset("vote:" + str(vote_id), "direction", "1")
+
+	if thread_id != None:
+		is_success, count = redis_add_emoji_by_thread_and_user_id(0, thread_id, user_id)
+	else:
+		is_success, count = redis_add_emoji_by_comment_and_user_id(0, comment_id, user_id)
+
 	return
 
-def redis_set_downvote(vote_id):
+def redis_set_downvote(vote_id, thread_id, comment_id, user_id):
 	conn = get_redis_connection('default')
 	conn.hset("vote:" + str(vote_id), "direction", "-1")
+
+	if thread_id != None:
+		is_success, count = redis_add_emoji_by_thread_and_user_id(1, thread_id, user_id)
+	else:
+		is_success, count = redis_add_emoji_by_comment_and_user_id(1, comment_id, user_id)
+
 	return
 
-def redis_flip_upvote_to_downvote(vote_id):
+def redis_flip_upvote_to_downvote(vote_id, thread_id, comment_id, user_id):
 	conn = get_redis_connection('default')
 	conn.hset("vote:" + str(vote_id), "direction", "-1")
 
-def redis_flip_downvote_to_upvote(vote_id):
+	if thread_id != None:
+		redis_remove_emoji_by_thread_and_user_id(0, thread_id, user_id)
+		redis_add_emoji_by_thread_and_user_id(1, thread_id, user_id)
+	else:
+		redis_remove_emoji_by_comment_and_user_id(0, comment_id, user_id)
+		redis_add_emoji_by_comment_and_user_id(1, comment_id, user_id)
+
+def redis_flip_downvote_to_upvote(vote_id, thread_id, comment_id, user_id):
 	conn = get_redis_connection('default')
 	conn.hset("vote:" + str(vote_id), "direction", "1")
+
+	if thread_id != None:
+		redis_remove_emoji_by_thread_and_user_id(1, thread_id, user_id)
+		redis_add_emoji_by_thread_and_user_id(0, thread_id, user_id)
+	else:
+		redis_remove_emoji_by_comment_and_user_id(1, comment_id, user_id)
+		redis_add_emoji_by_comment_and_user_id(0, comment_id, user_id)
 
 def redis_insert_game(game):
 	redis_insert_developer(game.developer)
@@ -270,7 +314,7 @@ def redis_insert_child_comment(new_secondary_comment, is_new):
 def redis_add_emoji_by_thread_and_user_id(emoji_id, thread_id, user_id):
 	conn = get_redis_connection('default')
 
-	if conn.zcard("thread:" + str(thread_id) + ":emojis") == 10:
+	if conn.zrank("thread:" + str(thread_id) + ":emojis", "emoji:" + str(emoji_id)) == None and conn.zcard("thread:" + str(thread_id) + ":emojis") == 10:
 		return False, None
 
 	conn.zadd("thread:" + str(thread_id) + ":emojis", {"emoji:" + str(emoji_id): time.time()}, True)
@@ -278,10 +322,10 @@ def redis_add_emoji_by_thread_and_user_id(emoji_id, thread_id, user_id):
 
 	return True, conn.zcard("thread:" + str(thread_id) + ":emoji:" + str(emoji_id) + ":users")
 
-def redis_remove_emoji_by_thread_and_user_id(emoji_id, comment_id, user_id):
+def redis_remove_emoji_by_thread_and_user_id(emoji_id, thread_id, user_id):
 	conn = get_redis_connection('default')
 
-	conn.zrem("thread:" + str(thread_id) + ":emoji:" + str(emoji_id) + ":users", "user:" + str(user.id))
+	conn.zrem("thread:" + str(thread_id) + ":emoji:" + str(emoji_id) + ":users", "user:" + str(user_id))
 
 	emoji_count = conn.zcard("thread:" + str(thread_id) + ":emoji:" + str(emoji_id) + ":users")
 	if emoji_count == 0:
@@ -296,13 +340,13 @@ def redis_add_emoji_by_comment_and_user_id(emoji_id, comment_id, user_id):
 		return False, None
 
 	conn.zadd("comment:" + str(comment_id) + ":emojis", {"emoji:" + str(emoji_id): time.time()}, True)
-	conn.zadd("comment:" + str(comment_id) + ":emoji:" + str(emoji_id) + ":users", {"user:" + str(user.id): time.time()})
+	conn.zadd("comment:" + str(comment_id) + ":emoji:" + str(emoji_id) + ":users", {"user:" + str(user_id): time.time()})
 
 	return True, conn.zcard("comment:" + str(comment_id) + ":emoji:" + str(emoji_id) + ":users")
 
 def redis_remove_emoji_by_comment_and_user_id(emoji_id, comment_id, user_id):
 	conn = get_redis_connection('default')
-	conn.zrem("comment:" + str(comment_id) + ":emoji:" + str(emoji_id) + ":users", "user:" + str(user.id))
+	conn.zrem("comment:" + str(comment_id) + ":emoji:" + str(emoji_id) + ":users", "user:" + str(user_id))
 
 	emoji_count = conn.zcard("comment:" + str(comment_id) + ":emoji:" + str(emoji_id) + ":users")
 	if emoji_count == 0:
@@ -516,6 +560,8 @@ def redis_generate_emojis_response(decoded_prefix, encoded_users, user_id):
 	emojis_id_arr = []
 	emoji_reaction_count_dict = {}
 
+	encoded_authors = set()
+
 	for encoded_emoji in encoded_emojis:
 		decoded_emoji = encoded_emoji.decode()
 		emoji_id = int(decoded_emoji.split(":")[1])
@@ -523,8 +569,9 @@ def redis_generate_emojis_response(decoded_prefix, encoded_users, user_id):
 
 		user_ids_arr_per_emoji_dict[emoji_id] = []
 		
-		top_3_encoded_users_reacted_with_emoji = conn.zrange(decoded_prefix + ":emoji:" + str(emoji_id), 0, 2)
-		emoji_reaction_count = conn.zcard(decoded_prefix + ":emoji:" + str(emoji_id))
+		top_3_encoded_users_reacted_with_emoji = conn.zrange(decoded_prefix + ":emoji:" + str(emoji_id) + ":users", 0, 2)
+
+		emoji_reaction_count = conn.zcard(decoded_prefix + ":emoji:" + str(emoji_id) + ":users")
 		emoji_reaction_count_dict[emoji_id] = emoji_reaction_count
 
 		user_exists_in_reaction = conn.zscore(decoded_prefix + ":emoji:" + str(emoji_id), "user:" + str(user_id))
@@ -532,11 +579,14 @@ def redis_generate_emojis_response(decoded_prefix, encoded_users, user_id):
 			user_ids_arr_per_emoji_dict[emoji_id].append(user_id)
 
 		for encoded_user in top_3_encoded_users_reacted_with_emoji:
-			if encoded_user == user_id.encode():
+			if encoded_user == str(user_id).encode():
 				continue
 
 			encoded_authors.add(encoded_user)
-			user_ids_arr_per_emoji_dict[emoji_id].append(encoded_user.decode())
+
+			decoded_user_id = encoded_user.decode().split(":")[1]
+
+			user_ids_arr_per_emoji_dict[emoji_id].append(int(decoded_user_id))
 
 	return emojis_id_arr, user_ids_arr_per_emoji_dict, emoji_reaction_count_dict, encoded_users
 
@@ -677,7 +727,9 @@ def redis_get_tree_by_parent_thread_id(roots, size, next_page_start, count, pare
 		serialized_comment["emojis"] = {"emojis_id_arr": emojis_id_arr, "user_ids_arr_per_emoji_dict": user_ids_arr_per_emoji_dict, "emoji_reaction_count_dict": emoji_reaction_count_dict}
 
 		comments_to_be_added.append(serialized_comment)
+
 		vote_id_response = conn.hget("vote:user:" + str(user_id), "comment:" + str(node))
+
 		if vote_id_response != None:
 			vote_response = conn.hgetall("vote:" + vote_id_response.decode())
 			votes_to_be_added.append(redis_vote_serializer(vote_response))

@@ -116,8 +116,11 @@ class ThreadViewSet(viewsets.ModelViewSet):
         new_vote = Vote.create(user, 1, new_thread, None)
 
         new_redis_thread = redis_helpers.redis_insert_thread(new_thread)
-        new_redis_vote = redis_helpers.redis_insert_vote(new_vote)
+        new_redis_vote = redis_helpers.redis_insert_vote(new_vote, new_thread.id, None)
         redis_user = redis_helpers.redis_get_user_by_id(user_id)
+
+        emojis_id_arr, user_ids_arr_per_emoji_dict, emoji_reaction_count_dict, encoded_authors = redis_helpers.redis_generate_emojis_response("thread:" + str(new_thread.id), set(), user_id)
+        new_redis_thread["emojis"] = {"emojis_id_arr": emojis_id_arr, "user_ids_arr_per_emoji_dict": user_ids_arr_per_emoji_dict, "emoji_reaction_count_dict": emoji_reaction_count_dict}
 
         return Response({"thread_response": new_redis_thread, "vote_response": new_redis_vote, "user_response": redis_user})
 
@@ -143,6 +146,7 @@ class EmojiViewSet(viewsets.ModelViewSet):
         user_id = request.user.id
 
         is_success, new_emoji_count = redis_helpers.redis_add_emoji_by_thread_and_user_id(emoji_id, thread_id, user_id)
+
         return Response({"is_success": is_success, "new_emoji_count": new_emoji_count})
 
     @action(detail=False, methods=['post'])
@@ -154,10 +158,11 @@ class EmojiViewSet(viewsets.ModelViewSet):
         user_id = request.user.id
 
         is_success, new_emoji_count = redis_helpers.redis_add_emoji_by_comment_and_user_id(emoji_id, comment_id, user_id)
+        
         return Response({"is_success": is_success, "new_emoji_count": new_emoji_count})
 
     @action(detail=False, methods=['post'])
-    def deleteEmojiByThreadId(self, request):
+    def remove_emoji_by_thread_id(self, request):
         body_unicode = request.body.decode('utf-8')
         body = json.loads(body_unicode)
         thread_id = body['thread_id']
@@ -168,7 +173,7 @@ class EmojiViewSet(viewsets.ModelViewSet):
         return Response({"is_success": is_success, "new_emoji_count": new_emoji_count})
 
     @action(detail=False, methods=['post'])
-    def deleteEmojiByCommentId(self, request):
+    def remove_emoji_by_comment_id(self, request):
         body_unicode = request.body.decode('utf-8')
         body = json.loads(body_unicode)
         comment_id = body['comment_id']
@@ -194,7 +199,7 @@ class VoteViewSet(viewsets.ModelViewSet):
         new_vote = Vote.create(user, 1, None, comment)
         updated_comment = comment.increment_upvotes()
         redis_helpers.redis_insert_comment_choose(updated_comment, False)
-        redis_helpers.redis_insert_vote(new_vote)
+        redis_helpers.redis_insert_vote(new_vote, None, updated_comment.id)
 
         serializer = self.get_serializer(new_vote, many=False)
         return Response(serializer.data)
@@ -205,6 +210,8 @@ class VoteViewSet(viewsets.ModelViewSet):
         body = json.loads(body_unicode)
         vote_id = body['vote_id']
         found_vote = Vote.objects.get(pk=vote_id)
+        user_id = request.user.id
+        vote_direction = found_vote.direction
 
         if found_vote.comment != None:
             comment = found_vote.comment
@@ -216,7 +223,12 @@ class VoteViewSet(viewsets.ModelViewSet):
             redis_helpers.redis_insert_thread(thread)
 
         found_vote.set_upvote()
-        redis_helpers.redis_set_upvote(vote_id)
+
+        if found_vote.comment != None:
+            redis_helpers.redis_set_upvote(vote_id, None, found_vote.comment.id, user_id)
+        else:
+            redis_helpers.redis_set_upvote(vote_id, found_vote.thread.id, None, user_id)
+
         return Response(True)
 
     @action(detail=False, methods=['post'])
@@ -227,9 +239,10 @@ class VoteViewSet(viewsets.ModelViewSet):
         user_id = request.user.id
 
         found_vote = Vote.objects.get(pk=vote_id)
+        original_vote_direction = found_vote.direction
         updated_comment = found_vote.switch_vote_comment()
         redis_helpers.redis_insert_comment_choose(updated_comment, False)
-        redis_helpers.redis_flip_downvote_to_upvote(vote_id)
+        redis_helpers.redis_flip_downvote_to_upvote(vote_id, None, updated_comment.id, user_id)
 
         serializer = self.get_serializer(found_vote, many=False)
         return Response(serializer.data)
@@ -246,7 +259,7 @@ class VoteViewSet(viewsets.ModelViewSet):
         new_vote = Vote.create(user, -1, None, comment)
         updated_comment = comment.increment_downvotes()
         redis_helpers.redis_insert_comment_choose(updated_comment, False)
-        redis_helpers.redis_insert_vote(new_vote)
+        redis_helpers.redis_insert_vote(new_vote, None, updated_comment.id)
 
         serializer = self.get_serializer(new_vote, many=False)
         return Response(serializer.data)
@@ -257,6 +270,7 @@ class VoteViewSet(viewsets.ModelViewSet):
         body = json.loads(body_unicode)
         vote_id = body['vote_id']
         found_vote = Vote.objects.get(pk=vote_id)
+        user_id = request.user.id
         
         if found_vote.comment != None:
             comment = found_vote.comment
@@ -268,7 +282,12 @@ class VoteViewSet(viewsets.ModelViewSet):
             redis_helpers.redis_insert_thread(thread)
 
         found_vote.set_downvote()
-        redis_helpers.redis_set_downvote(vote_id)
+
+        if found_vote.comment != None:
+            redis_helpers.redis_set_downvote(vote_id, None, found_vote.comment.id, user_id)
+        else:
+            redis_helpers.redis_set_downvote(vote_id, found_vote.thread.id, None, user_id)
+
         return Response(True)
 
     @action(detail=False, methods=['post'])
@@ -279,9 +298,10 @@ class VoteViewSet(viewsets.ModelViewSet):
         user_id = request.user.id
 
         found_vote = Vote.objects.get(pk=vote_id)
+        original_vote_direction = found_vote.direction
         updated_comment = found_vote.switch_vote_comment()
         redis_helpers.redis_insert_comment_choose(updated_comment, False)
-        redis_helpers.redis_flip_upvote_to_downvote(vote_id)
+        redis_helpers.redis_flip_upvote_to_downvote(vote_id, None, updated_comment.id, user_id)
 
         serializer = self.get_serializer(found_vote, many=False)
         return Response(serializer.data)
@@ -298,7 +318,7 @@ class VoteViewSet(viewsets.ModelViewSet):
         new_vote = Vote.create(user, 1, thread, None)
         updated_thread = thread.increment_upvotes()
         redis_helpers.redis_insert_thread(updated_thread)
-        redis_helpers.redis_insert_vote(new_vote)
+        redis_helpers.redis_insert_vote(new_vote, updated_thread.id, None)
 
         serializer = self.get_serializer(new_vote, many=False)
         return Response(serializer.data)
@@ -311,9 +331,10 @@ class VoteViewSet(viewsets.ModelViewSet):
         user_id = request.user.id
 
         found_vote = Vote.objects.get(pk=vote_id)
+        original_vote_direction = found_vote.direction
         updated_thread = found_vote.switch_vote_thread()
         redis_helpers.redis_insert_thread(updated_thread)
-        redis_helpers.redis_flip_downvote_to_upvote(vote_id)
+        redis_helpers.redis_flip_downvote_to_upvote(vote_id, updated_thread.id, None, user_id)
 
         serializer = self.get_serializer(found_vote, many=False)
         return Response(serializer.data)
@@ -330,7 +351,7 @@ class VoteViewSet(viewsets.ModelViewSet):
         new_vote = Vote.create(user, -1, thread, None)
         updated_thread = thread.increment_downvotes()
         redis_helpers.redis_insert_thread(updated_thread)
-        redis_helpers.redis_insert_vote(new_vote)
+        redis_helpers.redis_insert_vote(new_vote, updated_thread.id, None)
 
         serializer = self.get_serializer(new_vote, many=False)
         return Response(serializer.data)
@@ -343,9 +364,10 @@ class VoteViewSet(viewsets.ModelViewSet):
         user_id = request.user.id
 
         found_vote = Vote.objects.get(pk=vote_id)
+        original_vote_direction = found_vote.direction
         updated_thread = found_vote.switch_vote_thread()
         redis_helpers.redis_insert_thread(updated_thread)
-        redis_helpers.redis_flip_upvote_to_downvote(vote_id)
+        redis_helpers.redis_flip_upvote_to_downvote(vote_id, updated_thread.id, None, user_id)
 
         serializer = self.get_serializer(found_vote, many=False)
         return Response(serializer.data)
@@ -356,9 +378,11 @@ class VoteViewSet(viewsets.ModelViewSet):
         body = json.loads(body_unicode)
         vote_id = body['vote_id']
         user_id = request.user.id
+
+        vote_direction = Vote.direction
         updated_thread = Vote.delete_thread_vote(vote_id)
         redis_helpers.redis_insert_thread(updated_thread)
-        redis_helpers.redis_unvote(vote_id)
+        redis_helpers.redis_unvote(vote_id, updated_thread.id, None, user_id, vote_direction)
 
         serializer = ThreadSerializer(updated_thread, many=False)
         return Response(serializer.data)
@@ -371,7 +395,7 @@ class VoteViewSet(viewsets.ModelViewSet):
         user_id = request.user.id
         updated_comment = Vote.delete_comment_vote(vote_id)
         redis_helpers.redis_insert_comment_choose(updated_comment, False)
-        redis_helpers.redis_unvote(vote_id)
+        redis_helpers.redis_unvote(vote_id, None, updated_comment.id, user_id, vote_direction)
 
         serializer = CommentSerializer(updated_comment, many=False)
         return Response(serializer.data)
@@ -407,10 +431,8 @@ class CommentViewSet(viewsets.ModelViewSet):
         new_vote = Vote.create(user, 1, None, new_comment)
 
         new_redis_comment = redis_helpers.redis_insert_comment(new_comment, thread_id, True)
-        new_redis_vote = redis_helpers.redis_insert_vote(new_vote)
+        new_redis_vote = redis_helpers.redis_insert_vote(new_vote, None, new_comment.id)
         redis_user = redis_helpers.redis_get_user_by_id(user_id)
-
-        print(new_redis_comment, "redis_comment")
 
         return Response({"comment_response": new_redis_comment, "vote_response": new_redis_vote, "user_response": redis_user})
 
@@ -437,10 +459,9 @@ class CommentViewSet(viewsets.ModelViewSet):
         new_vote = Vote.create(user, 1, None, new_child_comment)
 
         new_redis_comment = redis_helpers.redis_insert_child_comment(new_child_comment, True)
-        new_redis_vote = redis_helpers.redis_insert_vote(new_vote)
+        new_redis_vote = redis_helpers.redis_insert_vote(new_vote, None, new_child_comment.id)
         redis_user = redis_helpers.redis_get_user_by_id(user_id)
 
-        print(new_redis_comment, new_redis_vote, redis_user)
         return Response({"comment_response": new_redis_comment, "vote_response": new_redis_vote, "user_response": redis_user})
 
     @action(detail=False, methods=['get'])
