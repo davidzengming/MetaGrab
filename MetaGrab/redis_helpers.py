@@ -233,6 +233,28 @@ def redis_flip_downvote_to_upvote(vote_id, thread_id, comment_id, user_id):
 		redis_remove_emoji_by_comment_and_user_id(1, comment_id, user_id)
 		redis_add_emoji_by_comment_and_user_id(0, comment_id, user_id)
 
+def redis_insert_visited_game_by_user_id(user_id, game_id):
+	conn = get_redis_connection('default')
+	conn.zadd("game_visit_history:user:" + str(user_id), {"game:" + str(game_id): time.time()})
+
+	max_game_history_limit = 10
+	if conn.zcard("game_visit_history:user:" + str(user_id)) > max_game_history_limit:
+		conn.zpopmin("game_visit_history:user:" + str(user_id))
+
+	return True
+
+def redis_get_game_history_by_user_id(user_id):
+	conn = get_redis_connection('default')
+
+	encoded_games = conn.zrevrange("game_visit_history:user:" + str(user_id))
+
+	decoded_game_id_arr = []
+	for encoded_game in encoded_games:
+		decoded_game_id_arr.append(encoded_game.decode())
+
+	return decoded_game_id_arr
+
+
 def redis_insert_game(game):
 	redis_insert_developer(game.developer)
 	redis_insert_genre(game.genre)
@@ -395,7 +417,9 @@ def redis_vote_serializer(vote_response):
 def redis_game_serializer(game_response):
 	decoded_response = {}
 	for key, val in game_response.items():
-		if key.decode() in {"created", "release_date", "next_expansion_release_date", "last_updated"}:
+		if key in {"thread_count"}:
+			decoded_response[key] = val
+		elif key.decode() in {"created", "release_date", "next_expansion_release_date", "last_updated"}:
 			if val.decode() != "":
 				decoded_response[key.decode()] = datetime.fromtimestamp(float(val.decode()), tz).strftime('%Y-%m-%dT%H:%M:%S')
 			else:
@@ -497,6 +521,8 @@ def redis_get_user_follow_games(user):
 	for encoded_game in encoded_games:
 		decoded_game = encoded_game.decode()
 		response = conn.hgetall(decoded_game)
+		response['thread_count'] = conn.zcard(decoded_game + ".ranking")
+
 		serializer.append(redis_game_serializer(response))
 
 	return serializer
@@ -521,6 +547,7 @@ def redis_get_all_games():
 	for encoded_game in encoded_games:
 		decoded_game = encoded_game.decode()
 		response = conn.hgetall(decoded_game)
+		response['thread_count'] = conn.zcard(decoded_game + ".ranking")
 		serializer.append(redis_game_serializer(response))
 
 	return serializer
@@ -547,6 +574,8 @@ def redis_get_games_by_release_range(start_year, start_month, end_year, end_mont
 	for encoded_game in encoded_games:
 		decoded_game = encoded_game.decode()
 		response = conn.hgetall(decoded_game)
+		response['thread_count'] = conn.zcard(decoded_game + ".ranking")
+
 		serializer.append(redis_game_serializer(response))
 
 	return serializer
@@ -672,8 +701,8 @@ def redis_get_tree_by_parent_comments_id(roots, size, next_page_start, count, pa
 		encoded_authors.add(response["author".encode()])
 
 		serialized_comment = redis_comment_serializer(response)
-		emojis_id_arr, user_ids_arr_per_emoji_dict, emoji_reaction_count_dict, encoded_authors = redis_generate_emojis_response(prefix, encoded_authors, user_id)
-		serialized_comment["emojis"] = {"emojis_id_arr": emojis_id_arr, "user_ids_arr_per_emoji_dict": user_ids_arr_per_emoji_dict, "emoji_reaction_count_dict": emoji_reaction_count_dict}
+		# emojis_id_arr, user_ids_arr_per_emoji_dict, emoji_reaction_count_dict, encoded_authors = redis_generate_emojis_response(prefix, encoded_authors, user_id)
+		# serialized_comment["emojis"] = {"emojis_id_arr": emojis_id_arr, "user_ids_arr_per_emoji_dict": user_ids_arr_per_emoji_dict, "emoji_reaction_count_dict": emoji_reaction_count_dict}
 
 		comments_to_be_added.append(serialized_comment)
 
@@ -723,8 +752,8 @@ def redis_get_tree_by_parent_thread_id(roots, size, next_page_start, count, pare
 		encoded_authors.add(response["author".encode()])
 
 		serialized_comment = redis_comment_serializer(response)
-		emojis_id_arr, user_ids_arr_per_emoji_dict, emoji_reaction_count_dict, encoded_authors = redis_generate_emojis_response(prefix, encoded_authors, user_id)
-		serialized_comment["emojis"] = {"emojis_id_arr": emojis_id_arr, "user_ids_arr_per_emoji_dict": user_ids_arr_per_emoji_dict, "emoji_reaction_count_dict": emoji_reaction_count_dict}
+		# emojis_id_arr, user_ids_arr_per_emoji_dict, emoji_reaction_count_dict, encoded_authors = redis_generate_emojis_response(prefix, encoded_authors, user_id)
+		# serialized_comment["emojis"] = {"emojis_id_arr": emojis_id_arr, "user_ids_arr_per_emoji_dict": user_ids_arr_per_emoji_dict, "emoji_reaction_count_dict": emoji_reaction_count_dict}
 
 		comments_to_be_added.append(serialized_comment)
 

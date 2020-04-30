@@ -77,6 +77,21 @@ class GameViewSet(viewsets.ModelViewSet):
         redis_helpers.redis_unfollow_game(user, game)
         return Response(True)
 
+    @action(detail=True, methods=['post'])
+    def insert_game_history_by_user_id(self, request, pk=None):
+        user_id = request.user.id
+        game_id = int(request.GET['game'])
+
+        is_successful = redis_helpers.redis_insert_visited_game_by_user_id(user_id, game_id)
+        return Response(True)
+
+    @action(detail=False, methods=['get'])
+    def get_game_history_by_user_id(self, request):
+        user_id = request.user.id
+
+        prev_10_game_visited_arr = redis_helpers.redis_get_prev_game_history_by_user_id(user_id)
+        return Response({"game_history": prev_10_game_visited_arr})
+
 
 class GenreViewSet(viewsets.ModelViewSet):
     queryset = Genre.objects.all()
@@ -119,7 +134,7 @@ class ThreadViewSet(viewsets.ModelViewSet):
         new_redis_vote = redis_helpers.redis_insert_vote(new_vote, new_thread.id, None)
         redis_user = redis_helpers.redis_get_user_by_id(user_id)
 
-        emojis_id_arr, user_ids_arr_per_emoji_dict, emoji_reaction_count_dict, encoded_authors = redis_helpers.redis_generate_emojis_response("thread:" + str(new_thread.id), set(), user_id)
+        emojis_id_arr, user_ids_arr_per_emoji_dict, emoji_reaction_count_dict, _ = redis_helpers.redis_generate_emojis_response("thread:" + str(new_thread.id), set(), user_id)
         new_redis_thread["emojis"] = {"emojis_id_arr": emojis_id_arr, "user_ids_arr_per_emoji_dict": user_ids_arr_per_emoji_dict, "emoji_reaction_count_dict": emoji_reaction_count_dict}
 
         return Response({"thread_response": new_redis_thread, "vote_response": new_redis_vote, "user_response": redis_user})
@@ -188,7 +203,7 @@ class VoteViewSet(viewsets.ModelViewSet):
     serializer_class = VoteSerializer
 
     @action(detail=False, methods=['post'])
-    def new_upvote_by_comment_id(self, request, pk=None):
+    def add_new_upvote_by_comment_id(self, request, pk=None):
         body_unicode = request.body.decode('utf-8')
         body = json.loads(body_unicode)
         comment_id = body['comment_id']
@@ -379,10 +394,10 @@ class VoteViewSet(viewsets.ModelViewSet):
         vote_id = body['vote_id']
         user_id = request.user.id
 
-        vote_direction = Vote.direction
+        found_vote = Vote.objects.get(pk=vote_id)
         updated_thread = Vote.delete_thread_vote(vote_id)
         redis_helpers.redis_insert_thread(updated_thread)
-        redis_helpers.redis_unvote(vote_id, updated_thread.id, None, user_id, vote_direction)
+        redis_helpers.redis_unvote(vote_id, updated_thread.id, None, user_id, found_vote.direction)
 
         serializer = ThreadSerializer(updated_thread, many=False)
         return Response(serializer.data)
@@ -393,9 +408,11 @@ class VoteViewSet(viewsets.ModelViewSet):
         body = json.loads(body_unicode)
         vote_id = body['vote_id']
         user_id = request.user.id
+
+        found_vote = Vote.objects.get(pk=vote_id)
         updated_comment = Vote.delete_comment_vote(vote_id)
         redis_helpers.redis_insert_comment_choose(updated_comment, False)
-        redis_helpers.redis_unvote(vote_id, None, updated_comment.id, user_id, vote_direction)
+        redis_helpers.redis_unvote(vote_id, None, updated_comment.id, user_id, found_vote.direction)
 
         serializer = CommentSerializer(updated_comment, many=False)
         return Response(serializer.data)
@@ -405,17 +422,19 @@ class CommentViewSet(viewsets.ModelViewSet):
     queryset = Comment.objects.all()
     serializer_class = CommentSerializer
 
-    @action(detail=False, methods=['get'])
-    def get_comments_by_thread_id(self, request, pk=None):
-        thread_id = int(request.GET['thread_id'])
-        start = int(request.GET['start'])
-        count = int(request.GET['count'])
+    # Deprecated - Use get_comment_tree
+    #
+    # @action(detail=False, methods=['get'])
+    # def get_comments_by_thread_id(self, request, pk=None):
+    #     thread_id = int(request.GET['thread_id'])
+    #     start = int(request.GET['start'])
+    #     count = int(request.GET['count'])
 
-        return Response(redis_helpers.redis_get_comments_by_thread_id(thread_id, start, count))
-        # comments = thread.comment_set.all()
-        # serializer = CommentSerializer(comments, many=True)
+    #     return Response(redis_helpers.redis_get_comments_by_thread_id(thread_id, start, count))
+    #     # comments = thread.comment_set.all()
+    #     # serializer = CommentSerializer(comments, many=True)
 
-        # return Response(serializer.data)
+    #     # return Response(serializer.data)
 
     @action(detail=False, methods=['post'])
     def post_comment_by_thread_id(self, request, pk=None):
@@ -434,15 +453,20 @@ class CommentViewSet(viewsets.ModelViewSet):
         new_redis_vote = redis_helpers.redis_insert_vote(new_vote, None, new_comment.id)
         redis_user = redis_helpers.redis_get_user_by_id(user_id)
 
+        # emojis_id_arr, user_ids_arr_per_emoji_dict, emoji_reaction_count_dict, _ = redis_helpers.redis_generate_emojis_response("comment:" + str(new_comment.id), set(), user_id)
+        # new_redis_comment["emojis"] = {"emojis_id_arr": emojis_id_arr, "user_ids_arr_per_emoji_dict": user_ids_arr_per_emoji_dict, "emoji_reaction_count_dict": emoji_reaction_count_dict}
+
         return Response({"comment_response": new_redis_comment, "vote_response": new_redis_vote, "user_response": redis_user})
 
-    @action(detail=False, methods=['get'])
-    def get_comments_by_parent_comment_id(self, request, pk=None):
-        parent_comment_id = int(request.GET['parent_comment_id'])
-        start = int(request.GET['start'])
-        count = int(request.GET['count'])
+    # Deprecated - Use get_comment_tree
+    #
+    # @action(detail=False, methods=['get'])
+    # def get_comments_by_parent_comment_id(self, request, pk=None):
+    #     parent_comment_id = int(request.GET['parent_comment_id'])
+    #     start = int(request.GET['start'])
+    #     count = int(request.GET['count'])
 
-        return Response(redis_helpers.redis_get_comments_by_parent_comment_id(parent_comment_id, start, count))
+    #     return Response(redis_helpers.redis_get_comments_by_parent_comment_id(parent_comment_id, start, count))
 
     @action(detail=False, methods=['post'])
     def post_comment_by_parent_comment_id(self, request, pk=None):
@@ -461,6 +485,9 @@ class CommentViewSet(viewsets.ModelViewSet):
         new_redis_comment = redis_helpers.redis_insert_child_comment(new_child_comment, True)
         new_redis_vote = redis_helpers.redis_insert_vote(new_vote, None, new_child_comment.id)
         redis_user = redis_helpers.redis_get_user_by_id(user_id)
+
+        # emojis_id_arr, user_ids_arr_per_emoji_dict, emoji_reaction_count_dict, _ = redis_helpers.redis_generate_emojis_response("comment:" + str(new_child_comment.id), set(), user_id)
+        # new_redis_comment["emojis"] = {"emojis_id_arr": emojis_id_arr, "user_ids_arr_per_emoji_dict": user_ids_arr_per_emoji_dict, "emoji_reaction_count_dict": emoji_reaction_count_dict}
 
         return Response({"comment_response": new_redis_comment, "vote_response": new_redis_vote, "user_response": redis_user})
 
