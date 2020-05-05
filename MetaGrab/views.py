@@ -77,10 +77,10 @@ class GameViewSet(viewsets.ModelViewSet):
         redis_helpers.redis_unfollow_game(user, game)
         return Response(True)
 
-    @action(detail=True, methods=['post'])
+    @action(detail=False, methods=['post'])
     def insert_game_history_by_user_id(self, request, pk=None):
         user_id = request.user.id
-        game_id = int(request.GET['game'])
+        game_id = int(request.GET['game_id'])
 
         is_successful = redis_helpers.redis_insert_visited_game_by_user_id(user_id, game_id)
         return Response(True)
@@ -89,7 +89,7 @@ class GameViewSet(viewsets.ModelViewSet):
     def get_game_history_by_user_id(self, request):
         user_id = request.user.id
 
-        prev_10_game_visited_arr = redis_helpers.redis_get_prev_game_history_by_user_id(user_id)
+        prev_10_game_visited_arr = redis_helpers.redis_get_game_history_by_user_id(user_id)
         return Response({"game_history": prev_10_game_visited_arr})
 
 

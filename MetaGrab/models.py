@@ -32,6 +32,8 @@ class Game(models.Model):
     icon = models.URLField(default="https://images2.alphacoders.com/474/thumb-1920-474206.jpg")
     banner = models.URLField(max_length=500, default="https://res.cloudinary.com/dzengcdn/image/upload/c_fill,g_auto,h_250,w_970/b_rgb:000000,e_gradient_fade,y_-0.50/c_scale,co_rgb:ffffff,fl_relative/v1575913613/dota2_tkcbuh.jpg")
 
+    game_summary = models.TextField(max_length = 40000)
+
     def __str__(self):
         return self.name
 

@@ -45,6 +45,7 @@ def transform_game_to_redis_object(game):
 		"developer": game.developer.id,
 		"genre": game.genre.id,
 		"last_updated": convert_date_to_unix(game.last_updated),
+		"game_summary": game.game_summary,
 	}
 	return data
 
@@ -246,11 +247,11 @@ def redis_insert_visited_game_by_user_id(user_id, game_id):
 def redis_get_game_history_by_user_id(user_id):
 	conn = get_redis_connection('default')
 
-	encoded_games = conn.zrevrange("game_visit_history:user:" + str(user_id))
+	encoded_games = conn.zrevrange("game_visit_history:user:" + str(user_id), 0, -1)
 
 	decoded_game_id_arr = []
 	for encoded_game in encoded_games:
-		decoded_game_id_arr.append(encoded_game.decode())
+		decoded_game_id_arr.append(int(encoded_game.decode().split(":")[1]))
 
 	return decoded_game_id_arr
 
