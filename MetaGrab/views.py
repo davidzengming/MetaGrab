@@ -1,6 +1,6 @@
-from .models import Game, Genre, Developer, Forum, Thread, User, UserProfile, Group, Comment, Vote
+from .models import Game, Genre, Developer, Forum, Thread, User, UserProfile, Group, Comment, Vote, Report
 from .serializers import GameSerializer, GenreSerializer, ThreadSerializer, ForumSerializer, DeveloperSerializer, \
-    UserSerializer, UserProfileSerializer, GroupSerializer, CommentSerializer, VoteSerializer
+    UserSerializer, UserProfileSerializer, GroupSerializer, CommentSerializer, VoteSerializer, ReportSerializer
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -147,7 +147,10 @@ class ThreadViewSet(viewsets.ModelViewSet):
         user_id = request.user.id
 
         if game_id:
-            threads_response, has_next_page, votes_response, users_response = redis_helpers.redis_get_threads_by_game_id(game_id, start, count, user_id)
+            blacklisted_user_ids = redis_helpers.redis_get_blacklisted_user_ids_by_user_id(user_id)
+            hidden_thread_ids = redis_helpers.redis_get_hidden_thread_ids_by_user_id(user_id)
+
+            threads_response, has_next_page, votes_response, users_response = redis_helpers.redis_get_threads_by_game_id(game_id, start, count, user_id, blacklisted_user_ids, hidden_thread_ids)
             return Response({"threads_response": threads_response, "has_next_page": has_next_page, "votes_response": votes_response, "users_response": users_response, "user_id": user_id})
 
 
@@ -197,6 +200,40 @@ class EmojiViewSet(viewsets.ModelViewSet):
 
         is_success, new_emoji_count = redis_helpers.redis_remove_emoji_by_comment_and_user_id(emoji_id, comment_id, user_id)
         return Response({"is_success": is_success, "new_emoji_count": new_emoji_count})
+
+
+class ReportViewSet(viewsets.ModelViewSet):
+    queryset = Report.objects.all()
+    serializer_class = ReportSerializer
+
+    @action(detail=False, methods=['post'])
+    def add_report_by_thread_id(self, request, pk=None):
+        body_unicode = request.body.decode('utf-8')
+        body = json.loads(body_unicode)
+        thread_id = body['thread_id']
+        thread = Thread.objects.get(pk=thread_id)
+        user_id = request.user.id
+        user = User.objects.get(pk=user_id)
+
+        new_report = Report.create(user, thread, None)
+
+        serializer = self.get_serializer(new_report, many=False)
+        return Response(serialize.data)
+
+    @action(detail=False, methods=['post'])
+    def add_report_by_comment_id(self, request, pk=None):
+        body_unicode = request.body.decode('utf-8')
+        body = json.loads(body_unicode)
+        comment_id = body['comment_id']
+        comment = Comment.objects.get(pk=comment_id)
+        user_id = request.user.id
+        user = User.objects.get(pk=user_id)
+
+        new_report = Report.create(user, None, comment)
+
+        serializer = self.get_serializer(new_report, many=False)
+        return Response(serializer.data)
+
 
 class VoteViewSet(viewsets.ModelViewSet):
     queryset = Vote.objects.all()
@@ -500,7 +537,10 @@ class CommentViewSet(viewsets.ModelViewSet):
         parent_comment_id = int(request.GET['parent_comment_id'])
         user_id = request.user.id
 
-        serialized_added_comments, serialized_more_comments_cache, serialized_votes, users_response = redis_helpers.redis_get_tree_by_parent_comments_id(roots, size, start, count, parent_comment_id, user_id)
+        blacklisted_user_ids = redis_helpers.redis_get_blacklisted_user_ids_by_user_id(user_id)
+        hidden_comment_ids = redis_helpers.redis_get_hidden_comment_ids_by_user_id(user_id)
+
+        serialized_added_comments, serialized_more_comments_cache, serialized_votes, users_response = redis_helpers.redis_get_tree_by_parent_comments_id(roots, size, start, count, parent_comment_id, user_id, blacklisted_user_ids, hidden_comment_ids)
         return Response({"added_comments": serialized_added_comments, "more_comments": serialized_more_comments_cache, "added_votes": serialized_votes, "users_response": users_response})
 
     @action(detail=False, methods=['get'])
@@ -512,7 +552,10 @@ class CommentViewSet(viewsets.ModelViewSet):
         parent_thread_id = int(request.GET['parent_thread_id'])
         user_id = request.user.id
 
-        serialized_added_comments, serialized_more_comments_cache, serialized_votes, users_response = redis_helpers.redis_get_tree_by_parent_thread_id(roots, size, start, count, parent_thread_id, user_id)
+        blacklisted_user_ids = redis_helpers.redis_get_blacklisted_user_ids_by_user_id(user_id)
+        hidden_comment_ids = redis_helpers.redis_get_hidden_comment_ids_by_user_id(user_id)
+
+        serialized_added_comments, serialized_more_comments_cache, serialized_votes, users_response = redis_helpers.redis_get_tree_by_parent_thread_id(roots, size, start, count, parent_thread_id, user_id, blacklisted_user_ids, hidden_comment_ids)
         return Response({"added_comments": serialized_added_comments, "more_comments": serialized_more_comments_cache, "added_votes": serialized_votes, "users_response": users_response})
 
 
@@ -524,6 +567,148 @@ class UserViewSet(viewsets.ModelViewSet):
 class UserProfileViewSet(viewsets.ModelViewSet):
     queryset = UserProfile.objects.all()
     serializer_class = UserProfileSerializer
+
+    @action(detail=False, methods=['get'])
+    def get_blacklisted_user_ids_by_user_id(self, request, pk=None):
+        user_id = request.user.id
+        user = User.objects.get(pk=user_id)
+
+        serialized_blacklisted_user_ids = redis_helpers.redis_get_blacklisted_user_ids_by_user_id(user)
+        return Response({"blacklisted_user_ids": serialized_blacklisted_user_ids})
+
+    @action(detail=False, methods=['get'])
+    def get_blacklisted_users_by_user_id(self, request, pk=None):
+        user_id = request.user.id
+        user = User.objects.get(pk=user_id)
+
+        serialized_blacklisted_users = redis_helpers.redis_get_blacklisted_users_by_user_id(user)
+        return Response({"blacklisted_users": serialized_blacklisted_users})
+
+    @action(detail=False, methods=['post'])
+    def add_user_to_blacklist_by_user_id(self, request, pk=None):
+        user_id = request.user.id
+        blacklisted_user_id = int(request.GET['blacklist_id'])
+
+        user = User.objects.get(pk=user_id)
+        blacklisted_user = User.objects.get(pk=blacklisted_user_id)
+
+        user.userprofile.add_user_to_blacklist(blacklisted_user.userprofile)
+        redis_helpers.redis_add_blacklisted_user_by_user_id(user.id, blacklisted_user.id)
+
+        return Response({"success": True})
+
+    @action(detail=False, methods=['post'])
+    def remove_user_from_blacklist_by_user_id(self, request, pk=None):
+        user_id = request.user.id
+        blacklisted_user_id = int(request.GET['blacklist_id'])
+
+        user = User.objects.get(pk=user_id)
+        blacklisted_user = User.objects.get(pk=blacklisted_user_id)
+
+        user.userprofile.remove_user_from_blacklist(blacklisted_user.userprofile)
+        redis_helpers.redis_remove_blacklisted_user_by_user_id(user.id, blacklisted_user.id)
+
+        return Response({"success": True})
+
+    @action(detail=False, methods=['post'])
+    def ban_user_by_admin_user(self, request, pk=None):
+        admin_user_id = request.user.id
+
+        target_ban_user_id = int(request.GET['banned_user_id'])
+        target_ban_user = User.objects.get(pk=target_ban_user_id)
+        
+        target_ban_user.userprofile.ban_user()
+        return Response({"success": True})
+
+    @action(detail=False, methods=['post'])
+    def unban_user_admin_user(self, request, pk=None):
+        admin_user_id = request.user.id
+
+        target_unban_user_id = int(request.GET['unbanned_user_id'])
+        target_unban_user = User.objects.get(pk=target_unban_user_id)
+
+        target_unban_user.userprofile.unban_user()
+        return Reponse({"success": True})
+
+    @action(detail=False, methods=['get'])
+    def get_hidden_thread_ids_by_user_id(self, request, pk=None):
+        user_id = request.user.id
+
+        serialized_hidden_thread_ids = redis_helpers.redis_get_hidden_thread_ids_by_user_id(user_id)
+        return Response({"hidden_thread_ids": serialized_hidden_thread_ids})
+
+    @action(detail=False, methods=['get'])
+    def get_hidden_threads_by_user_id(self, request, pk=None):
+        user_id = request.user.id
+
+        serialized_hidden_threads = redis_helpers.redis_get_hidden_threads_by_user_id(user_id)
+        return Response({"hidden_threads": serialized_hidden_threads})
+
+    @action(detail=False, methods=['post'])
+    def hide_thread_by_user_id(self, request, pk=None):
+        user_id = request.user.id
+        user = User.objects.get(pk=user_id)
+
+        target_hide_thread_id = int(request.GET['hide_thread_id'])
+        target_hide_thread = Thread.objects.get(pk=target_hide_thread_id)
+
+        user.userprofile.hide_thread(target_hide_thread)
+        redis_helpers.redis_hide_thread_by_user_id(user_id, target_hide_thread_id)
+
+        return Response({"success": True})
+
+    @action(detail=False, methods=['post'])
+    def unhide_thread_by_user_id(self, request, pk=None):
+        user_id = request.user.id
+        user = User.objects.get(pk=user_id)
+
+        target_unhide_thread_id = int(rqeuest.GET['unhide_thread_id'])
+        target_unhide_thread = Thread.objects.get(pk=target_unhide_thread_id)
+
+        user.userprofile.unhide_thread(target_unhide_thread)
+        redis_helpers.redis_unhide_thread_by_user_id(user_id, target_hide_thread_id)
+
+        return Response({"success": True})
+
+    @action(detail=False, methods=['get'])
+    def get_hidden_comment_ids_by_user_id(self, request, pk=None):
+        user_id = request.user.id
+
+        serialized_hidden_comment_ids = redis_helpers.redis_get_hidden_comment_ids_by_user_id(user_id)
+        return Response({"hidden_comment_ids": serialized_hidden_comment_ids})
+
+    @action(detail=False, methods=['get'])
+    def get_hidden_comments_by_user_id(self, request, pk=None):
+        user_id = request.user.id
+
+        serialized_hidden_comments = redis_helpers.redis_get_hidden_comments_by_user_id(user_id)
+        return Response({"hidden_comments": serialized_hidden_comments})
+
+    @action(detail=False, methods=['post'])
+    def hide_comment_by_user_id(self, request, pk=None):
+        user_id = request.user.id
+        user = User.objects.get(pk=user_id)
+
+        target_hide_comment_id = int(request.GET['hide_comment_id'])
+        target_hide_comment = Comment.objects.get(pk=target_hide_comment_id)
+
+        user.userprofile.hide_comment(target_hide_comment)
+        redis_helpers.redis_hide_comment_by_user_id(user_id, target_hide_comment_id)
+
+        return Response({"success": True})
+
+    @action(detail=False, methods=['post'])
+    def unhide_comment_by_user_id(self, rqeuest, pk=None):
+        user_id = request.user.id
+        user = User.objects.get(pk=user_id)
+
+        target_unhide_comment_id = int(request.GET['unhide_comment_id'])
+        target_unhide_comment = Comment.objects.get(pk=target_unhide_comment_id)
+
+        user.userprofile.unhide_comment(target_unhide_comment)
+        redis_helpers.redis_unhide_comment_by_user_id(user_id, target_unhide_comment_id)
+
+        return Response({"success": True})
 
 
 class GroupViewSet(viewsets.ModelViewSet):

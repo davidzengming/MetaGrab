@@ -120,6 +120,8 @@ def transform_user_to_redis_object(user):
 		"id": user.id,
 		"created": convert_datetime_to_unix(user.date_joined),
 		"username": user.username,
+		"is_banned": user.is_banned,
+		"banned_until": convert_datetime_to_unix(user.banned_until)
 	}
 
 	return data
@@ -179,6 +181,106 @@ def redis_insert_user(user):
 	conn = get_redis_connection('default')
 	redis_user_object = transform_user_to_redis_object(user)
 	conn.hmset("user:" + str(user.id), redis_user_object)
+
+
+def redis_get_blacklisted_user_ids_by_user_id(user_id):
+	conn = get_redis_connection('default')
+
+	encoded_blacklisted_user_ids = conn.smembers("blacklisted_ids:user:" + str(user_id))
+	serializer = []
+
+	for encoded_blacklisted_user_id in encoded_blacklisted_user_ids:
+		decoded_blacklisted_user_id = encoded_blacklisted_user_id.decode()
+		serializer.append(decoded_blacklisted_user_id)
+
+	return serializer
+
+def redis_get_blacklisted_users_by_user_id(user_id):
+	conn = get_redis_connection('default')
+
+	encoded_blacklisted_user_ids = conn.smembers("blacklisted_ids:user:" + str(user_id))
+	serializer = []
+	for encoded_blacklisted_user_id in encoded_blacklisted_user_ids:
+		decoded_blacklisted_user_id = encoded_blacklisted_user_id.decode()
+		blacklisted_user = conn.hgetall("user:" + decoded_blacklisted_user_id)
+
+		serializer.append(redis_user_serializer(blacklisted_user))
+
+	return serializer
+
+def redis_get_hidden_thread_ids_by_user_id(user_id):
+	conn = get_redis_connection('default')
+
+	encoded_hidden_thread_ids = conn.smembers("hidden_thread_ids:user:" + str(user_id))
+	serializer = []
+
+	for encoded_hidden_thread_id in encoded_hidden_thread_ids:
+		decoded_hidden_thread_id = encoded_hidden_thread_id.decode()
+		serializer.append(decoded_hidden_thread_id)
+
+	return serializer
+
+def redis_get_hidden_threads_by_user_id(user_id):
+	conn = get_redis_connection('default')
+
+	encoded_hidden_thread_ids = conn.smembers("hidden_thread_ids:user" + str(user_id))
+	serializer = []
+
+	for encoded_hidden_thread_id in encoded_hidden_thread_ids:
+		decoded_hidden_thread_id = encoded_hidden_thread_id.decode()
+
+		thread = conn.hgetall("thread:" + decoded_hidden_thread_id)
+		serializer.append(thread)
+
+	return serializer
+
+def redis_get_hidden_comment_ids_by_user_id(user_id):
+	conn = get_redis_connection('default')
+
+	encoded_hidden_comment_ids = conn.smembers("hidden_comment_ids:user:" + str(user_id))
+	serializer = []
+
+	for encoded_hidden_comment_id in encoded_hidden_comment_ids:
+		decoded_hidden_comment_id = encoded_hidden_comment_id.decode()
+		serializer.append(decoded_hidden_comment_id)
+
+	return serializer
+
+def redis_get_hidden_comments_by_user_id(user_id):
+	conn = get_redis_connection('default')
+
+	encoded_hidden_comment_ids = conn.smembers("hidden_comment_ids:user:" + str(user_id))
+	serializer = []
+
+	for encoded_hidden_comment_id in encoded_hidden_comment_ids:
+		decoded_hidden_comment_id = encoded_hidden_comment_id.decode()
+		serializer.append(decoded_hidden_comment_id)
+
+	return serializer
+
+def redis_add_blacklisted_user_by_user_id(user_id, blacklisted_user_id):
+	conn = get_redis_connection('default')
+	conn.sadd("blacklisted_ids:user:" + str(user_id), str(blacklisted_user_id))
+
+def redis_remove_blacklisted_user_by_user_id(user_id, blacklisted_user_id):
+	conn = get_redis_connection('default')
+	conn.srem("blacklisted_ids:user:" + str(user_id), str(blacklisted_user_id))
+
+def redis_hide_thread_by_user_id(user_id, thread_id):
+	conn = get_redis_connection('default')
+	conn.sadd("hidden_thread_ids:user:" + str(user_id), str(thread_id))
+
+def redis_unhide_thread_by_user_id(user_id, thread_id):
+	conn = get_redis_connection('default')
+	conn.srem("hidden_thread_ids:user:" + str(user_id), str(thread_id))
+
+def redis_hide_comment_by_user_id(user_id, comment_id):
+	conn = get_redis_connection('default')
+	conn.sadd("hidden_comment_ids:user:" + str(user_id), str(comment_id))
+
+def redis_unhide_comment_by_user_id(user_id, comment_id):
+	conn = get_redis_connection('default')
+	conn.srem("hidden_comment_ids:user:" + str(user_id), str(comment_id))
 
 def redis_unvote(vote_id, thread_id, comment_id, user_id, original_vote_direction):
 	conn = get_redis_connection('default')
@@ -418,7 +520,7 @@ def redis_vote_serializer(vote_response):
 def redis_game_serializer(game_response):
 	decoded_response = {}
 	for key, val in game_response.items():
-		if key in {"thread_count"}:
+		if key in {"thread_count", "follower_count"}:
 			decoded_response[key] = val
 		elif key.decode() in {"created", "release_date", "next_expansion_release_date", "last_updated"}:
 			if val.decode() != "":
@@ -496,7 +598,7 @@ def redis_user_serializer(user_response):
 	decoded_response = {}
 
 	for key, val in user_response.items():
-		if key.decode() == "created":
+		if key.decode() == "created" or key.decode() == "banned_until":
 			decoded_response[key.decode()] = datetime.fromtimestamp(float(val.decode()), tz).strftime('%Y-%m-%dT%H:%M:%S')
 		elif key.decode() in {"id"}:
 			decoded_response[key.decode()] = int(val.decode())
@@ -507,11 +609,15 @@ def redis_user_serializer(user_response):
 def redis_follow_game(user, game):
 	conn = get_redis_connection('default')
 	conn.sadd("follow_games_user:" + str(user.id), "game:" + str(game.id))
+	conn.sadd("game_followers:" + str(game.id), "user:" + str(user.id))
+
 	return
 
 def redis_unfollow_game(user, game):
 	conn = get_redis_connection('default')
 	conn.srem("follow_games_user:" + str(user.id), "game:" + str(game.id))
+	conn.srem("game_followers:" + str(game.id), "user:" + str(user.id))
+
 	return
 
 def redis_get_user_follow_games(user):
@@ -523,10 +629,16 @@ def redis_get_user_follow_games(user):
 		decoded_game = encoded_game.decode()
 		response = conn.hgetall(decoded_game)
 		response['thread_count'] = conn.zcard(decoded_game + ".ranking")
+		response['follower_count'] = redis_get_game_followers_count(decoded_game.split(":")[1])
 
 		serializer.append(redis_game_serializer(response))
 
 	return serializer
+
+def redis_get_game_followers_count(game_id):
+	conn = get_redis_connection('default')
+
+	return conn.scard("game_followers:" + str(game_id))
 
 def redis_get_user_by_id(id):
 	conn = get_redis_connection('default')
@@ -549,6 +661,8 @@ def redis_get_all_games():
 		decoded_game = encoded_game.decode()
 		response = conn.hgetall(decoded_game)
 		response['thread_count'] = conn.zcard(decoded_game + ".ranking")
+
+		response['follower_count'] = redis_get_game_followers_count(decoded_game.split(":")[1])
 		serializer.append(redis_game_serializer(response))
 
 	return serializer
@@ -576,6 +690,7 @@ def redis_get_games_by_release_range(start_year, start_month, end_year, end_mont
 		decoded_game = encoded_game.decode()
 		response = conn.hgetall(decoded_game)
 		response['thread_count'] = conn.zcard(decoded_game + ".ranking")
+		response['follower_count'] = redis_get_game_followers_count(decoded_game.split(":")[1])
 
 		serializer.append(redis_game_serializer(response))
 
@@ -620,17 +735,22 @@ def redis_generate_emojis_response(decoded_prefix, encoded_users, user_id):
 
 	return emojis_id_arr, user_ids_arr_per_emoji_dict, emoji_reaction_count_dict, encoded_users
 
-def redis_get_threads_by_game_id(game_id, start, count, user_id):
+def redis_get_threads_by_game_id(game_id, start, count, user_id, blacklisted_user_ids, hidden_thread_ids):
 	conn = get_redis_connection('default')
 	encoded_threads = conn.zrevrange("game:" + str(game_id) + ".ranking", start, start + count - 1)
 	serializer, vote_serializer = [], []
 	has_next_page = (start + count - 1) < conn.zcard("game:" + str(game_id) + ".ranking")
 
 	encoded_authors = set()
+	hidden_thread_ids_set = set(hidden_thread_ids)
 
 	for encoded_thread in encoded_threads:
 		decoded_thread = encoded_thread.decode()
 		response = conn.hgetall(decoded_thread)
+
+		if int(decoded_thread.split(":")[1]) in hidden_thread_ids_set or int(response["author".encode()]) in blacklisted_user_ids:
+			continue
+
 		encoded_authors.add(response["author".encode()])
 
 		serialized_thread = redis_thread_serializer(response)
@@ -639,7 +759,7 @@ def redis_get_threads_by_game_id(game_id, start, count, user_id):
 		serialized_thread["emojis"] = {"emojis_id_arr": emojis_id_arr, "user_ids_arr_per_emoji_dict": user_ids_arr_per_emoji_dict, "emoji_reaction_count_dict": emoji_reaction_count_dict}
 		serializer.append(serialized_thread)
 
-		vote_id_response = conn.hget("vote:user:" + str(user_id), "thread:" + str(decoded_thread.split(":")[1]))
+		vote_id_response = conn.hget("vote:user:" + str(user_id), decoded_thread)
 		if vote_id_response != None:
 			vote_response = conn.hgetall("vote:" + vote_id_response.decode())
 			vote_serializer.append(redis_vote_serializer(vote_response))
@@ -680,7 +800,11 @@ def redis_get_comments_by_parent_comment_id(parent_comment_id, start, count):
 
 	return serializer, user_serializer
 
-def redis_get_tree_by_parent_comments_id(roots, size, next_page_start, count, parent_comment_id, user_id):
+def redis_get_tree_by_parent_comments_id(roots, size, next_page_start, count, parent_comment_id, user_id, blacklisted_user_ids, hidden_comment_ids):
+	
+	blacklisted_user_ids_set = set(blacklisted_user_ids)
+	hidden_comment_ids_set = set(hidden_comment_ids)
+
 	conn = get_redis_connection('default')
 	queue = collections.deque(roots[::-1])
 	comments_to_be_added = []
@@ -696,9 +820,12 @@ def redis_get_tree_by_parent_comments_id(roots, size, next_page_start, count, pa
 	encoded_authors = set()
 	while queue and size > 0:
 		node = queue.pop()
-
 		prefix = "comment:" + str(node)
 		response = conn.hgetall(prefix)
+
+		if node in hidden_comment_ids_set or int(response["author".encode()]) in blacklisted_user_ids:
+			continue
+
 		encoded_authors.add(response["author".encode()])
 
 		serialized_comment = redis_comment_serializer(response)
@@ -731,7 +858,10 @@ def redis_get_tree_by_parent_comments_id(roots, size, next_page_start, count, pa
 
 	return comments_to_be_added, more_comments_response + next_page_more_comments_response, votes_to_be_added, user_serializer
 
-def redis_get_tree_by_parent_thread_id(roots, size, next_page_start, count, parent_thread_id, user_id):
+def redis_get_tree_by_parent_thread_id(roots, size, next_page_start, count, parent_thread_id, user_id, blacklisted_user_ids, hidden_comment_ids):
+	blacklisted_user_ids_set = set(blacklisted_user_ids)
+	hidden_comment_ids_set = set(hidden_comment_ids)
+
 	conn = get_redis_connection('default')
 	queue = []
 	comments_to_be_added = []
@@ -750,6 +880,10 @@ def redis_get_tree_by_parent_thread_id(roots, size, next_page_start, count, pare
 		node = queue.pop()
 		prefix = "comment:" + str(node)
 		response = conn.hgetall(prefix)
+
+		if node in hidden_comment_ids_set or int(response["author".encode()]) in blacklisted_user_ids:
+			continue
+
 		encoded_authors.add(response["author".encode()])
 
 		serialized_comment = redis_comment_serializer(response)

@@ -15,6 +15,7 @@ router.register(r'users_profile', views.UserProfileViewSet)
 router.register(r'groups', views.GroupViewSet)
 router.register(r'comments', views.CommentViewSet)
 router.register(r'votes', views.VoteViewSet)
+router.register(r'reports', views.ReportViewSet)
 router.register(r'emojis', views.EmojiViewSet, basename='emojis')
 router.register(r'redis', views.RedisServices, basename='redis')
 

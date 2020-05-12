@@ -40,6 +40,7 @@ class Game(models.Model):
 class Forum(models.Model):
     created = models.DateTimeField(default=now, editable=False)
     game = models.OneToOneField(Game, on_delete=models.CASCADE)
+
     def __str__(self):
         return self.game.name
 
@@ -74,6 +75,7 @@ class Thread(Votable):
     title = models.TextField(max_length = 200)
     forum = models.ForeignKey(Forum, on_delete=models.CASCADE)
     image_urls = JSONField()
+    is_hidden = models.BooleanField(default=False)
 
     @classmethod
     def create(cls, flair, title, content_string, content_attributes, author, forum, image_urls):
@@ -124,7 +126,8 @@ class Thread(Votable):
 class Comment(Votable):
     parent_thread = models.ForeignKey(Thread, on_delete=models.CASCADE, null=True, blank=True)
     parent_post = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True)
-    
+    is_hidden = models.BooleanField(default=False)
+
     @classmethod
     def create(cls, parent_thread, parent_post, content_string, content_attributes, author):
         comment = cls.objects.create(parent_thread=parent_thread, parent_post=parent_post, content_string=content_string, content_attributes=content_attributes, author=author)
@@ -171,10 +174,28 @@ class Comment(Votable):
     def __str__(self):
         return self.content_string
 
+class Report(models.Model):
+    created = models.DateTimeField(default=now, editable=False)
+    reportee = models.ForeignKey(User, on_delete=models.CASCADE)
+    reported_thread = models.ForeignKey(Thread, on_delete=models.CASCADE, null=True, blank=True)
+    reported_post = models.ForeignKey(Comment, on_delete=models.CASCADE, null=True, blank=True)
+
+    @classmethod
+    def create(cls, reportee, reported_thread, reported_post):
+        report = cls.objects.create(reportee=reportee, reported_thread=reported_thread, reported_post=reported_post)
+
+
 class UserProfile(models.Model):
     created = models.DateTimeField(default=now, editable=False)
-    user = models.OneToOneField(User, on_delete=models.CASCADE)
+    user = models.OneToOneField(User, related_name='userprofile', on_delete=models.CASCADE)
     followed_games = models.ManyToManyField(Game)
+
+    is_banned = models.BooleanField(default=False)
+    banned_until = models.DateTimeField(default=now, editable=True)
+
+    blacklisted_user_profiles = models.ManyToManyField("self")
+    hidden_threads = models.ManyToManyField(Thread)
+    hidden_comments = models.ManyToManyField(Comment)
 
     def find_followed_games(self):
         return self.followed_games
@@ -186,6 +207,47 @@ class UserProfile(models.Model):
 
     def unfollow_game(self, game):
         self.followed_games.remove(game)
+        self.save()
+        return
+
+    def add_user_to_blacklist(self, user_profile):
+        self.blacklisted_user_profiles.add(user_profile)
+        self.save()
+        return
+
+    def remove_user_from_blacklist(self, user_profile):
+        self.blacklisted_user_profiles.remove(user_profile)
+        self.save()
+        return
+
+    def ban_user(self, ban_expiration_date):
+        self.is_banned = True
+        self.banned_until = ban_expiration_date
+        self.save()
+        return
+
+    def unban_user(self):
+        self.is_banned = False
+        self.save()
+        return
+
+    def hide_thread(self, thread):
+        self.hidden_threads.add(thread)
+        self.save()
+        return
+
+    def unhide_thread(self, thread):
+        self.hidden_threads.remove(thread)
+        self.save()
+        return
+
+    def hide_comment(self, comment):
+        self.hidden_comments.add(comment)
+        self.save()
+        return
+
+    def unhide_comment(self, comment):
+        self.hidden_comments.remove(comment)
         self.save()
         return
 
@@ -254,6 +316,7 @@ class Vote(models.Model):
         self.direction = 1
         self.save()
         return
+
     def set_downvote(self):
         self.direction = -1
         self.save()

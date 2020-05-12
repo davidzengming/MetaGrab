@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Game, Genre, Developer, Forum, Thread, UserProfile, Comment, Vote
+from .models import Game, Genre, Developer, Forum, Thread, UserProfile, Comment, Vote, Report
 from django.contrib.auth.models import User, Group
 from rest_framework.serializers import Serializer
 
@@ -30,6 +30,12 @@ class ForumSerializer(serializers.ModelSerializer):
     class Meta:
         model = Forum
         fields = ('id', 'game')
+
+
+class ReportSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Report
+        fields = '__all__'
 
 
 class ThreadSerializer(serializers.ModelSerializer):
