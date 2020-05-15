@@ -10,6 +10,7 @@ import pytz, collections
 from django_redis import get_redis_connection
 import json
 import time
+from . import redis_sub_operations
 
 epoch_seconds_1970 = datetime(1970, 1, 1, 0, 0).timestamp()
 tz = pytz.timezone('America/Toronto')
@@ -83,6 +84,7 @@ def transform_thread_to_redis_object(thread):
 		"num_childs": thread.num_childs,
 		"num_subtree_nodes": thread.num_subtree_nodes,
 		"image_urls": json.dumps(thread.image_urls),
+		"is_hidden": "1" if thread.is_hidden == True else "0",
 	}
 
 	return data
@@ -100,6 +102,7 @@ def transform_comment_to_redis_object(comment):
 		"parent_post": comment.parent_post.id if comment.parent_post != None else "",
 		"num_childs": comment.num_childs,
 		"num_subtree_nodes": comment.num_subtree_nodes,
+		"is_hidden": "1" if comment.is_hidden == True else "0",
 	}
 
 	return data
@@ -118,9 +121,9 @@ def transform_vote_to_redis_object(vote):
 def transform_user_to_redis_object(user):
 	data = {
 		"id": user.id,
-		"created": convert_datetime_to_unix(user.date_joined),
-		"username": user.username,
-		"is_banned": user.is_banned,
+		"created": convert_datetime_to_unix(user.created),
+		"username": user.user.username,
+		"is_banned": "1" if user.is_banned == True else "0",
 		"banned_until": convert_datetime_to_unix(user.banned_until)
 	}
 
@@ -181,7 +184,7 @@ def redis_insert_user(user):
 	conn = get_redis_connection('default')
 	redis_user_object = transform_user_to_redis_object(user)
 	conn.hmset("user:" + str(user.id), redis_user_object)
-
+	
 
 def redis_get_blacklisted_user_ids_by_user_id(user_id):
 	conn = get_redis_connection('default')
@@ -200,6 +203,7 @@ def redis_get_blacklisted_users_by_user_id(user_id):
 
 	encoded_blacklisted_user_ids = conn.smembers("blacklisted_ids:user:" + str(user_id))
 	serializer = []
+
 	for encoded_blacklisted_user_id in encoded_blacklisted_user_ids:
 		decoded_blacklisted_user_id = encoded_blacklisted_user_id.decode()
 		blacklisted_user = conn.hgetall("user:" + decoded_blacklisted_user_id)
@@ -216,21 +220,21 @@ def redis_get_hidden_thread_ids_by_user_id(user_id):
 
 	for encoded_hidden_thread_id in encoded_hidden_thread_ids:
 		decoded_hidden_thread_id = encoded_hidden_thread_id.decode()
-		serializer.append(decoded_hidden_thread_id)
+		serializer.append(int(decoded_hidden_thread_id))
 
 	return serializer
 
 def redis_get_hidden_threads_by_user_id(user_id):
 	conn = get_redis_connection('default')
 
-	encoded_hidden_thread_ids = conn.smembers("hidden_thread_ids:user" + str(user_id))
+	encoded_hidden_thread_ids = conn.smembers("hidden_thread_ids:user:" + str(user_id))
 	serializer = []
 
 	for encoded_hidden_thread_id in encoded_hidden_thread_ids:
 		decoded_hidden_thread_id = encoded_hidden_thread_id.decode()
 
 		thread = conn.hgetall("thread:" + decoded_hidden_thread_id)
-		serializer.append(thread)
+		serializer.append(redis_thread_serializer(thread))
 
 	return serializer
 
@@ -242,7 +246,7 @@ def redis_get_hidden_comment_ids_by_user_id(user_id):
 
 	for encoded_hidden_comment_id in encoded_hidden_comment_ids:
 		decoded_hidden_comment_id = encoded_hidden_comment_id.decode()
-		serializer.append(decoded_hidden_comment_id)
+		serializer.append(int(decoded_hidden_comment_id))
 
 	return serializer
 
@@ -254,7 +258,9 @@ def redis_get_hidden_comments_by_user_id(user_id):
 
 	for encoded_hidden_comment_id in encoded_hidden_comment_ids:
 		decoded_hidden_comment_id = encoded_hidden_comment_id.decode()
-		serializer.append(decoded_hidden_comment_id)
+
+		comment = conn.hgetall("comment:" + decoded_hidden_comment_id)
+		serializer.append(redis_comment_serializer(comment))
 
 	return serializer
 
@@ -483,37 +489,22 @@ def redis_thread_serializer(thread_response):
 	decoded_response = {}
 
 	for key, val in thread_response.items():
-		if key.decode() == "created":
-			decoded_response[key.decode()] = datetime.fromtimestamp(float(val.decode()), tz).strftime('%Y-%m-%dT%H:%M:%S')
-		elif key.decode() in {"id", "author", "num_childs", "num_subtree_nodes", "upvotes", "downvotes", "flair"}:
-			decoded_response[key.decode()] = int(val.decode())
-		# forum field in json response is nested, additional O(1) retrieve call required
-		elif key.decode() == "forum":
-			forum = Forum.objects.get(pk=int(val.decode()))
-			serializer = ForumSerializer(forum, many=False)
-			decoded_response[key.decode()] = serializer.data
-		elif key.decode() in {"content_attributes", "image_urls"}:
-			decoded_response[key.decode()] = json.loads(val.decode())
+		decoded_key = key.decode()
+		if decoded_key in transformer_dict:
+			decoded_response[decoded_key] = transformer_dict[decoded_key](val.decode())
 		else:
-			decoded_response[key.decode()] = val.decode()
+			decoded_response[decoded_key] = val.decode()
 
 	return decoded_response
 
 def redis_vote_serializer(vote_response):
 	decoded_response = {}
 	for key, val in vote_response.items():
-		if key.decode() == "created":
-			decoded_response[key.decode()] = datetime.fromtimestamp(float(val.decode()), tz)
-		elif key.decode() in {"id", "thread", "comment", "user"}:
-			if val.decode() != "":
-				decoded_response[key.decode()] = int(val.decode())
-			else:
-				decoded_response[key.decode()] = None
-
-		elif key.decode() in {"direction"}:
-			decoded_response[key.decode()] = int(val.decode())
+		decoded_key = key.decode()
+		if decoded_key in transformer_dict:
+			decoded_response[decoded_key] = transformer_dict[decoded_key](val.decode())
 		else:
-			decoded_response[key.decode()] = val.decode()
+			decoded_response[decoded_key] = val.decode()
 
 	return decoded_response
 
@@ -522,75 +513,45 @@ def redis_game_serializer(game_response):
 	for key, val in game_response.items():
 		if key in {"thread_count", "follower_count"}:
 			decoded_response[key] = val
-		elif key.decode() in {"created", "release_date", "next_expansion_release_date", "last_updated"}:
-			if val.decode() != "":
-				decoded_response[key.decode()] = datetime.fromtimestamp(float(val.decode()), tz).strftime('%Y-%m-%dT%H:%M:%S')
-			else:
-				decoded_response[key.decode()] = None
-		elif key.decode() in {"id"}:
-			if val.decode() != "":
-				decoded_response[key.decode()] = int(val.decode())
-			else:
-				decoded_response[key.decode()] = None
-		elif key.decode() == "developer":
-			decoded_response[key.decode()] = redis_get_developer_by_id(int(val.decode()))
-		elif key.decode() == "genre":
-			decoded_response[key.decode()] = redis_get_genre_by_id(int(val.decode()))
+			continue
+
+		decoded_key = key.decode()
+		if decoded_key in transformer_dict:
+			decoded_response[decoded_key] = transformer_dict[decoded_key](val.decode())
 		else:
-			decoded_response[key.decode()] = val.decode()
+			decoded_response[decoded_key] = val.decode()
 
 	return decoded_response
 
 def redis_genre_serializer(genre_response):
 	decoded_response = {}
 	for key, val in genre_response.items():
-		if key.decode() in {"created"}:
-			if val.decode() != "":
-				decoded_response[key.decode()] = datetime.fromtimestamp(float(val.decode()), tz)
-			else:
-				decoded_response[key.decode()] = None
-		elif key.decode() in {"id"}:
-			if val.decode() != "":
-				decoded_response[key.decode()] = int(val.decode())
-			else:
-				decoded_response[key.decode()] = None
+		decoded_key = key.decode()
+		if decoded_key in transformer_dict:
+			decoded_response[decoded_key] = transformer_dict[decoded_key](val.decode())
 		else:
-			decoded_response[key.decode()] = val.decode()
+			decoded_response[decoded_key] = val.decode()
 	return decoded_response
 
 def redis_developer_serializer(developer_response):
 	decoded_response = {}
 	for key, val in developer_response.items():
-		if key.decode() in {"created"}:
-			if val.decode() != "":
-				decoded_response[key.decode()] = datetime.fromtimestamp(float(val.decode()), tz)
-			else:
-				decoded_response[key.decode()] = None
-		elif key.decode() in {"id"}:
-			if val.decode() != "":
-				decoded_response[key.decode()] = int(val.decode())
-			else:
-				decoded_response[key.decode()] = None
+		decoded_key = key.decode()
+		if decoded_key in transformer_dict:
+			decoded_response[decoded_key] = transformer_dict[decoded_key](val.decode())
 		else:
-			decoded_response[key.decode()] = val.decode()
+			decoded_response[decoded_key] = val.decode()
 	return decoded_response
 
 def redis_comment_serializer(comment_response):
 	decoded_response = {}
 	for key, val in comment_response.items():
-		if key.decode() == "created":
-			decoded_response[key.decode()] = datetime.fromtimestamp(float(val.decode()), tz).strftime('%Y-%m-%dT%H:%M:%S')
-		elif key.decode() in {"id", "author", "num_childs", "num_subtree_nodes", "upvotes", "downvotes"}:
-			decoded_response[key.decode()] = int(val.decode())
-		elif key.decode() in {"parent_thread", "parent_post"}:
-			if val.decode() == "":
-				decoded_response[key.decode()] = None
-			else:
-				decoded_response[key.decode()] = int(val.decode())
-		elif key.decode() == "content_attributes":
-			decoded_response[key.decode()] = json.loads(val.decode())
+		decoded_key = key.decode()
+
+		if decoded_key in transformer_dict:
+			decoded_response[decoded_key] = transformer_dict[decoded_key](val.decode())
 		else:
-			decoded_response[key.decode()] = val.decode()
+			decoded_response[decoded_key] = val.decode()
 
 	return decoded_response
 
@@ -598,12 +559,12 @@ def redis_user_serializer(user_response):
 	decoded_response = {}
 
 	for key, val in user_response.items():
-		if key.decode() == "created" or key.decode() == "banned_until":
-			decoded_response[key.decode()] = datetime.fromtimestamp(float(val.decode()), tz).strftime('%Y-%m-%dT%H:%M:%S')
-		elif key.decode() in {"id"}:
-			decoded_response[key.decode()] = int(val.decode())
+		decoded_key = key.decode()
+
+		if decoded_key in transformer_dict:
+			decoded_response[decoded_key] = transformer_dict[decoded_key](val.decode())
 		else:
-			decoded_response[key.decode()] = val.decode()
+			decoded_response[decoded_key] = val.decode()
 	return decoded_response
 
 def redis_follow_game(user, game):
@@ -651,6 +612,43 @@ def redis_get_developer_by_id(id):
 def redis_get_genre_by_id(id):
 	conn = get_redis_connection('default')
 	return redis_genre_serializer(conn.hgetall("genre:" + str(id)))
+
+transformer_dict = {
+	# thread
+	"created": redis_sub_operations.get_date_time,
+	"id": redis_sub_operations.convert_to_int,
+	"author": redis_sub_operations.convert_to_int,
+	"num_childs": redis_sub_operations.convert_to_int,
+	"num_subtree_nodes": redis_sub_operations.convert_to_int,
+	"upvotes": redis_sub_operations.convert_to_int,
+	"downvotes": redis_sub_operations.convert_to_int,
+	"flair": redis_sub_operations.convert_to_int,
+	"forum": redis_sub_operations.convert_to_int,
+	"is_hidden": redis_sub_operations.convert_to_bool,
+	"content_attributes": redis_sub_operations.convert_to_json,
+	"image_urls": redis_sub_operations.convert_to_json,
+
+	#vote
+	"thread": redis_sub_operations.convert_to_int,
+	"comment": redis_sub_operations.convert_to_int,
+	"user": redis_sub_operations.convert_to_int,
+	"direction": redis_sub_operations.convert_to_int,
+
+	#game
+	"next_expansion_release_date": redis_sub_operations.get_date_time,
+	"release_date": redis_sub_operations.get_date_time,
+	"last_updated": redis_sub_operations.get_date_time,
+	"developer": redis_get_developer_by_id,
+	"genre": redis_get_genre_by_id,
+
+	#comment
+	"parent_thread": redis_sub_operations.convert_to_int,
+	"parent_post": redis_sub_operations.convert_to_int,
+
+	#user
+	"banned_until": redis_sub_operations.get_date_time,
+	"is_banned": redis_sub_operations.convert_to_bool,
+}
 
 def redis_get_all_games():
 	conn = get_redis_connection('default')
@@ -748,7 +746,7 @@ def redis_get_threads_by_game_id(game_id, start, count, user_id, blacklisted_use
 		decoded_thread = encoded_thread.decode()
 		response = conn.hgetall(decoded_thread)
 
-		if int(decoded_thread.split(":")[1]) in hidden_thread_ids_set or int(response["author".encode()]) in blacklisted_user_ids:
+		if int(decoded_thread.split(":")[1]) in hidden_thread_ids_set or response["author".encode()].decode() in blacklisted_user_ids:
 			continue
 
 		encoded_authors.add(response["author".encode()])
@@ -823,7 +821,7 @@ def redis_get_tree_by_parent_comments_id(roots, size, next_page_start, count, pa
 		prefix = "comment:" + str(node)
 		response = conn.hgetall(prefix)
 
-		if node in hidden_comment_ids_set or int(response["author".encode()]) in blacklisted_user_ids:
+		if node in hidden_comment_ids_set or response["author".encode()].decode() in blacklisted_user_ids:
 			continue
 
 		encoded_authors.add(response["author".encode()])
@@ -881,7 +879,7 @@ def redis_get_tree_by_parent_thread_id(roots, size, next_page_start, count, pare
 		prefix = "comment:" + str(node)
 		response = conn.hgetall(prefix)
 
-		if node in hidden_comment_ids_set or int(response["author".encode()]) in blacklisted_user_ids:
+		if node in hidden_comment_ids_set or response["author".encode()].decode() in blacklisted_user_ids:
 			continue
 
 		encoded_authors.add(response["author".encode()])

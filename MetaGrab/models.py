@@ -180,9 +180,11 @@ class Report(models.Model):
     reported_thread = models.ForeignKey(Thread, on_delete=models.CASCADE, null=True, blank=True)
     reported_post = models.ForeignKey(Comment, on_delete=models.CASCADE, null=True, blank=True)
 
+    report_reason = models.TextField(max_length = 100)
+
     @classmethod
-    def create(cls, reportee, reported_thread, reported_post):
-        report = cls.objects.create(reportee=reportee, reported_thread=reported_thread, reported_post=reported_post)
+    def create(cls, reportee, reported_thread, reported_post, report_reason):
+        report = cls.objects.create(reportee=reportee, reported_thread=reported_thread, reported_post=reported_post, report_reason=report_reason)
 
 
 class UserProfile(models.Model):
@@ -193,7 +195,7 @@ class UserProfile(models.Model):
     is_banned = models.BooleanField(default=False)
     banned_until = models.DateTimeField(default=now, editable=True)
 
-    blacklisted_user_profiles = models.ManyToManyField("self")
+    blacklisted_user_profiles = models.ManyToManyField("self", symmetrical=False)
     hidden_threads = models.ManyToManyField(Thread)
     hidden_comments = models.ManyToManyField(Comment)
 
@@ -344,7 +346,8 @@ class Vote(models.Model):
 @receiver(post_save, sender=User)
 def create_user_profile(sender, instance, created, **kwargs):
     if created:
-        UserProfile.objects.create(user=instance)
+        new_user = UserProfile.objects.create(user=instance)
+        return
 
 @receiver(post_save, sender=User)
 def save_user_profile(sender, instance, **kwargs):

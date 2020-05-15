@@ -211,14 +211,15 @@ class ReportViewSet(viewsets.ModelViewSet):
         body_unicode = request.body.decode('utf-8')
         body = json.loads(body_unicode)
         thread_id = body['thread_id']
+        report_reason = body['report_reason']
         thread = Thread.objects.get(pk=thread_id)
         user_id = request.user.id
         user = User.objects.get(pk=user_id)
 
-        new_report = Report.create(user, thread, None)
+        new_report = Report.create(user, thread, None, report_reason)
 
         serializer = self.get_serializer(new_report, many=False)
-        return Response(serialize.data)
+        return Response(serializer.data)
 
     @action(detail=False, methods=['post'])
     def add_report_by_comment_id(self, request, pk=None):
@@ -229,7 +230,7 @@ class ReportViewSet(viewsets.ModelViewSet):
         user_id = request.user.id
         user = User.objects.get(pk=user_id)
 
-        new_report = Report.create(user, None, comment)
+        new_report = Report.create(user, None, comment, report_reason)
 
         serializer = self.get_serializer(new_report, many=False)
         return Response(serializer.data)
@@ -563,6 +564,15 @@ class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
     serializer_class = UserSerializer
 
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+
+        new_user = User.objects.get(pk=serializer.data['id'])
+        redis_helpers.redis_insert_user(new_user.userprofile)
+
+        return Response(serializer.data)
 
 class UserProfileViewSet(viewsets.ModelViewSet):
     queryset = UserProfile.objects.all()
@@ -571,23 +581,24 @@ class UserProfileViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def get_blacklisted_user_ids_by_user_id(self, request, pk=None):
         user_id = request.user.id
-        user = User.objects.get(pk=user_id)
 
-        serialized_blacklisted_user_ids = redis_helpers.redis_get_blacklisted_user_ids_by_user_id(user)
+        serialized_blacklisted_user_ids = redis_helpers.redis_get_blacklisted_user_ids_by_user_id(user_id)
         return Response({"blacklisted_user_ids": serialized_blacklisted_user_ids})
 
     @action(detail=False, methods=['get'])
     def get_blacklisted_users_by_user_id(self, request, pk=None):
         user_id = request.user.id
-        user = User.objects.get(pk=user_id)
 
-        serialized_blacklisted_users = redis_helpers.redis_get_blacklisted_users_by_user_id(user)
+        serialized_blacklisted_users = redis_helpers.redis_get_blacklisted_users_by_user_id(user_id)
         return Response({"blacklisted_users": serialized_blacklisted_users})
 
     @action(detail=False, methods=['post'])
     def add_user_to_blacklist_by_user_id(self, request, pk=None):
         user_id = request.user.id
-        blacklisted_user_id = int(request.GET['blacklist_id'])
+        
+        body_unicode = request.body.decode('utf-8') 
+        body = json.loads(body_unicode)
+        blacklisted_user_id = body['blacklist_user_id']
 
         user = User.objects.get(pk=user_id)
         blacklisted_user = User.objects.get(pk=blacklisted_user_id)
@@ -600,7 +611,10 @@ class UserProfileViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'])
     def remove_user_from_blacklist_by_user_id(self, request, pk=None):
         user_id = request.user.id
-        blacklisted_user_id = int(request.GET['blacklist_id'])
+
+        body_unicode = request.body.decode('utf-8') 
+        body = json.loads(body_unicode)
+        blacklisted_user_id = body['unblacklist_user_id']
 
         user = User.objects.get(pk=user_id)
         blacklisted_user = User.objects.get(pk=blacklisted_user_id)
@@ -642,6 +656,7 @@ class UserProfileViewSet(viewsets.ModelViewSet):
         user_id = request.user.id
 
         serialized_hidden_threads = redis_helpers.redis_get_hidden_threads_by_user_id(user_id)
+
         return Response({"hidden_threads": serialized_hidden_threads})
 
     @action(detail=False, methods=['post'])
@@ -649,7 +664,9 @@ class UserProfileViewSet(viewsets.ModelViewSet):
         user_id = request.user.id
         user = User.objects.get(pk=user_id)
 
-        target_hide_thread_id = int(request.GET['hide_thread_id'])
+        body_unicode = request.body.decode('utf-8') 
+        body = json.loads(body_unicode)
+        target_hide_thread_id = int(body['hide_thread_id'])
         target_hide_thread = Thread.objects.get(pk=target_hide_thread_id)
 
         user.userprofile.hide_thread(target_hide_thread)
@@ -662,11 +679,13 @@ class UserProfileViewSet(viewsets.ModelViewSet):
         user_id = request.user.id
         user = User.objects.get(pk=user_id)
 
-        target_unhide_thread_id = int(rqeuest.GET['unhide_thread_id'])
+        body_unicode = request.body.decode('utf-8') 
+        body = json.loads(body_unicode)
+        target_unhide_thread_id = int(body['unhide_thread_id'])
         target_unhide_thread = Thread.objects.get(pk=target_unhide_thread_id)
 
         user.userprofile.unhide_thread(target_unhide_thread)
-        redis_helpers.redis_unhide_thread_by_user_id(user_id, target_hide_thread_id)
+        redis_helpers.redis_unhide_thread_by_user_id(user_id, target_unhide_thread_id)
 
         return Response({"success": True})
 
@@ -689,7 +708,9 @@ class UserProfileViewSet(viewsets.ModelViewSet):
         user_id = request.user.id
         user = User.objects.get(pk=user_id)
 
-        target_hide_comment_id = int(request.GET['hide_comment_id'])
+        body_unicode = request.body.decode('utf-8') 
+        body = json.loads(body_unicode)
+        target_hide_comment_id = int(body['hide_comment_id'])
         target_hide_comment = Comment.objects.get(pk=target_hide_comment_id)
 
         user.userprofile.hide_comment(target_hide_comment)
@@ -698,11 +719,13 @@ class UserProfileViewSet(viewsets.ModelViewSet):
         return Response({"success": True})
 
     @action(detail=False, methods=['post'])
-    def unhide_comment_by_user_id(self, rqeuest, pk=None):
+    def unhide_comment_by_user_id(self, request, pk=None):
         user_id = request.user.id
         user = User.objects.get(pk=user_id)
 
-        target_unhide_comment_id = int(request.GET['unhide_comment_id'])
+        body_unicode = request.body.decode('utf-8') 
+        body = json.loads(body_unicode)
+        target_unhide_comment_id = int(body['unhide_comment_id'])
         target_unhide_comment = Comment.objects.get(pk=target_unhide_comment_id)
 
         user.userprofile.unhide_comment(target_unhide_comment)
@@ -725,7 +748,7 @@ class RedisServices(viewsets.GenericViewSet):
         threads = Thread.objects.all()
         comments = Comment.objects.all()
         votes = Vote.objects.all()
-        users = User.objects.all()
+        users = UserProfile.objects.all()
         
         redis_helpers.flush_redis()
         redis_helpers.redis_insert_games_bulk(games)
