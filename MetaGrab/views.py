@@ -21,7 +21,6 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
         data['refresh'] = str(refresh)
         data['access'] = str(refresh.access_token)
         data['user_id'] = self.user.id
-
         # Add extra responses here
         # data['user'] = Users.objects.get(pk=self.user.user_id)
         # data['groups'] = self.user.groups.values_list('name', flat=True)
@@ -134,8 +133,10 @@ class ThreadViewSet(viewsets.ModelViewSet):
         new_redis_vote = redis_helpers.redis_insert_vote(new_vote, new_thread.id, None)
         redis_user = redis_helpers.redis_get_user_by_id(user_id)
 
-        emojis_id_arr, user_ids_arr_per_emoji_dict, emoji_reaction_count_dict, _ = redis_helpers.redis_generate_emojis_response("thread:" + str(new_thread.id), set(), user_id)
-        new_redis_thread["emojis"] = {"emojis_id_arr": emojis_id_arr, "user_ids_arr_per_emoji_dict": user_ids_arr_per_emoji_dict, "emoji_reaction_count_dict": emoji_reaction_count_dict}
+        emojis_id_arr, user_arr_per_emoji_dict, emoji_reaction_count_dict, did_react_to_emoji_dict, _ = redis_helpers.redis_generate_emojis_response("thread:" + str(new_thread.id), {}, user_id)
+        new_redis_thread["emojis"] = {"emojis_id_arr": emojis_id_arr, "user_arr_per_emoji_dict": user_arr_per_emoji_dict, "emoji_reaction_count_dict": emoji_reaction_count_dict, "did_react_to_emoji_dict": did_react_to_emoji_dict}
+        new_redis_thread["votes"] = [new_redis_vote]
+        new_redis_thread["users"] = [redis_user]
 
         return Response({"thread_response": new_redis_thread, "vote_response": new_redis_vote, "user_response": redis_user})
 
@@ -150,8 +151,9 @@ class ThreadViewSet(viewsets.ModelViewSet):
             blacklisted_user_ids = redis_helpers.redis_get_blacklisted_user_ids_by_user_id(user_id)
             hidden_thread_ids = redis_helpers.redis_get_hidden_thread_ids_by_user_id(user_id)
 
-            threads_response, has_next_page, votes_response, users_response = redis_helpers.redis_get_threads_by_game_id(game_id, start, count, user_id, blacklisted_user_ids, hidden_thread_ids)
-            return Response({"threads_response": threads_response, "has_next_page": has_next_page, "votes_response": votes_response, "users_response": users_response, "user_id": user_id})
+            threads_response, has_next_page = redis_helpers.redis_get_threads_by_game_id(game_id, start, count, user_id, blacklisted_user_ids, hidden_thread_ids)
+            
+            return Response({"threads_response": threads_response, "has_next_page": has_next_page, "user_id": user_id})
 
 
 class EmojiViewSet(viewsets.ModelViewSet):
