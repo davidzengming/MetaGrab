@@ -791,59 +791,84 @@ def redis_get_threads_by_game_id(game_id, start, count, user_id, blacklisted_use
 		
 	return serializer, has_next_page
 
-def redis_get_comments_by_thread_id(thread_id, start, count):
+# def redis_get_comments_by_thread_id(thread_id, start, count):
+# 	conn = get_redis_connection('default')
+# 	encoded_comments = conn.zrevrange("thread:" + str(thread_id) + ".ranking", start, start + count - 1)
+# 	serializer = []
+
+# 	for encoded_comment in encoded_comments:
+# 		response = conn.hgetall(encoded_comment.decode())
+# 		serializer.append(redis_comment_serializer(response))
+# 	return serializer
+
+# def redis_get_comments_by_parent_comment_id(parent_comment_id, start, count):
+# 	conn = get_redis_connection('default')
+# 	encoded_comments = conn.zrevrange("comment:" + str(parent_comment_id) + ".ranking", start, start + count - 1)
+# 	serializer = []
+
+# 	encoded_authors = set()
+# 	for encoded_comment in encoded_comments:
+# 		response = conn.hgetall(encoded_comment.decode())
+# 		serializer.append(redis_comment_serializer(response))
+# 		encoded_authors.add(response["author".encode()])
+
+# 	user_serializer = []
+# 	for encoded_author in encoded_authors:
+# 		user_response = conn.hgetall("user:" + encoded_author.decode())
+# 		user_serializer.append(redis_user_serializer(user_response))
+
+# 	return serializer, user_serializer
+
+def redis_generate_comment_tree_node(comment_id, response, user_id, seen_users):
 	conn = get_redis_connection('default')
-	encoded_comments = conn.zrevrange("thread:" + str(thread_id) + ".ranking", start, start + count - 1)
-	serializer = []
+	def get_author(encoded_author):
+		decoded_author = encoded_author.decode()
+		if decoded_author in seen_users:
+			return [seen_users[decoded_author]]
 
-	for encoded_comment in encoded_comments:
-		response = conn.hgetall(encoded_comment.decode())
-		serializer.append(redis_comment_serializer(response))
-	return serializer
+		user_serializer = []
+		user_response = conn.hgetall("user:" + decoded_author)
 
-def redis_get_comments_by_parent_comment_id(parent_comment_id, start, count):
-	conn = get_redis_connection('default')
-	encoded_comments = conn.zrevrange("comment:" + str(parent_comment_id) + ".ranking", start, start + count - 1)
-	serializer = []
+		seen_users[decoded_author] = redis_user_serializer(user_response)
+		user_serializer.append(seen_users[decoded_author])
+		return user_serializer
 
-	encoded_authors = set()
-	for encoded_comment in encoded_comments:
-		response = conn.hgetall(encoded_comment.decode())
-		serializer.append(redis_comment_serializer(response))
-		encoded_authors.add(response["author".encode()])
-
-	user_serializer = []
-	for encoded_author in encoded_authors:
-		user_response = conn.hgetall("user:" + encoded_author.decode())
-		user_serializer.append(redis_user_serializer(user_response))
-
-	return serializer, user_serializer
-
-def redis_generate_comment_tree_node(comment_id, response, user_id):
 	serialized_comment = redis_comment_serializer(response)
 	vote_serializer = []
 	vote_id_response = conn.hget("vote:user:" + str(user_id), "comment:" + str(comment_id))
 	if vote_id_response != None:
 		vote_response = conn.hgetall("vote:" + vote_id_response.decode())
-		vote_serializer.append(vote_response)
-	user_serializer = []
-	user_response = conn.hgetall("user:" + response["author"])
-	user_serializer.append(user_response)
+		vote_serializer.append(redis_vote_serializer(vote_response))
 
-	return (serialized_comment, vote_serializer, user_serializer)
+	user_serializer = get_author(response["author".encode()])
+
+	serialized_comment["votes"] = vote_serializer
+	serialized_comment["users"] = user_serializer
+
+	return serialized_comment
 
 def redis_generate_tree_by_parent_comment_id(parent_comment_id, size, count, next_page_start, user_id, blacklisted_user_ids, hidden_comment_ids):
 	conn = get_redis_connection('default')
 
+	next_page_start = next_page_start
 	blacklisted_user_ids_set = set(blacklisted_user_ids)
 	hidden_comment_ids_set = set(hidden_comment_ids)
 
 	q = collections.deque([parent_comment_id])
 	serialized_comment_nodes = []
 
+	comment_breaks_arr = []
+
+	seen_users = {}
+
+	is_first_node = True
+
 	while q and size > 0:
 		node = q.popleft()
-		nested_encoded_comments = conn.zrevrange("comment:" + str(node) + ".ranking", next_page_start, count - 1)
+		nested_encoded_comments = conn.zrevrange("comment:" + str(node) + ".ranking", next_page_start, next_page_start + count - 1)
+		if is_first_node == True:
+			is_first_node = False
+			next_page_start = 0
 
 		for encoded_comment in nested_encoded_comments:
 			_, comment_id = encoded_comment.decode().split(":")
@@ -853,34 +878,44 @@ def redis_generate_tree_by_parent_comment_id(parent_comment_id, size, count, nex
 			if comment_id in hidden_comment_ids_set or response["author".encode()].decode() in blacklisted_user_ids:
 				continue
 
-			queue.append(comment_id)
-			serialized_comment_nodes.append(self.redis_generate_comment_tree_node(comment_id, response, user_id))
+			q.append(comment_id)
+			serialized_comment_nodes.append(redis_generate_comment_tree_node(comment_id, response, user_id, seen_users))
 			size -= 1
 			if size == 0:
 				break
 
-		serialized_comment_nodes.append("#")
+		# serialized_comment_nodes.append("#")
+		comment_breaks_arr.append(len(serialized_comment_nodes) - 1)
 
-	return serialized_comment_nodes
+	return serialized_comment_nodes, comment_breaks_arr
 
 def redis_generate_tree_by_parent_thread_id(parent_thread_id, size, count, next_page_start, user_id, blacklisted_user_ids, hidden_comment_ids):
 	conn = get_redis_connection('default')
 
+	next_page_start = next_page_start
 	blacklisted_user_ids_set = set(blacklisted_user_ids)
 	hidden_comment_ids_set = set(hidden_comment_ids)
 
 	is_thread = True
 	q = collections.deque([parent_thread_id])
 
+	serialized_comment_nodes = []
+	comment_breaks_arr = []
+
+	seen_users = {}
+
+	is_first_node = True
+
 	while q and size > 0:
 		node = q.popleft()
-
+		
 		encoded_comments = []
 		if is_thread:
-			encoded_comments = conn.zrevrange("thread:" + str(node) + ".ranking", next_page_start, count - 1)
+			encoded_comments = conn.zrevrange("thread:" + str(node) + ".ranking", next_page_start, next_page_start + count - 1)
 			is_thread = False
+			next_page_start = 0
 		else:
-			encoded_comments = conn.zrevrange("comment:" + str(node) + ".ranking", next_page_start, count - 1)
+			encoded_comments = conn.zrevrange("comment:" + str(node) + ".ranking", next_page_start, next_page_start + count - 1)
 
 		for encoded_comment in encoded_comments:
 			_, comment_id = encoded_comment.decode().split(":")
@@ -890,131 +925,134 @@ def redis_generate_tree_by_parent_thread_id(parent_thread_id, size, count, next_
 			if comment_id in hidden_comment_ids_set or response["author".encode()].decode() in blacklisted_user_ids:
 				continue
 
-			queue.append(comment_id)
-			serialized_comment_nodes.append(self.redis_generate_comment_tree_node(comment_id, response, user_id))
+			q.append(comment_id)
+
+			serialized_comment_nodes.append(redis_generate_comment_tree_node(comment_id, response, user_id, seen_users))
 			size -= 1
 			if size == 0:
 				break
 
-		serialized_comment_nodes.append("#")
-	return serialized_comment_nodes
+		# serialized_comment_nodes.append("#")
+		comment_breaks_arr.append(len(serialized_comment_nodes) - 1)
+
+	return serialized_comment_nodes, comment_breaks_arr
 
 
-def redis_get_tree_by_parent_comments_id(roots, size, next_page_start, count, parent_comment_id, user_id, blacklisted_user_ids, hidden_comment_ids):
+# def redis_get_tree_by_parent_comments_id(roots, size, next_page_start, count, parent_comment_id, user_id, blacklisted_user_ids, hidden_comment_ids):
 	
-	blacklisted_user_ids_set = set(blacklisted_user_ids)
-	hidden_comment_ids_set = set(hidden_comment_ids)
+# 	blacklisted_user_ids_set = set(blacklisted_user_ids)
+# 	hidden_comment_ids_set = set(hidden_comment_ids)
 
-	conn = get_redis_connection('default')
-	queue = collections.deque(roots[::-1])
-	comments_to_be_added = []
-	votes_to_be_added = []
-	next_page_more_comments = conn.zrevrange("comment:" + str(parent_comment_id) + ".ranking", next_page_start + count, next_page_start + 2 * count - 1)
+# 	conn = get_redis_connection('default')
+# 	queue = collections.deque(roots[::-1])
+# 	comments_to_be_added = []
+# 	votes_to_be_added = []
+# 	next_page_more_comments = conn.zrevrange("comment:" + str(parent_comment_id) + ".ranking", next_page_start + count, next_page_start + 2 * count - 1)
 
-	# number of preloaded roots are under the maximum page count(as a result of total comments size limitation per load), check if there are more comments on same page
-	if len(queue) < count:
-		cur_page_unloaded_comments = conn.zrevrange("comment:" + str(parent_comment_id) + ".ranking", next_page_start + len(queue), next_page_start + count - 1)
-		for comment in cur_page_unloaded_comments:
-			queue.appendleft(comment.decode().split(":")[1])
+# 	# number of preloaded roots are under the maximum page count(as a result of total comments size limitation per load), check if there are more comments on same page
+# 	if len(queue) < count:
+# 		cur_page_unloaded_comments = conn.zrevrange("comment:" + str(parent_comment_id) + ".ranking", next_page_start + len(queue), next_page_start + count - 1)
+# 		for comment in cur_page_unloaded_comments:
+# 			queue.appendleft(comment.decode().split(":")[1])
 
-	encoded_authors = set()
-	while queue and size > 0:
-		node = queue.pop()
-		prefix = "comment:" + str(node)
-		response = conn.hgetall(prefix)
+# 	encoded_authors = set()
+# 	while queue and size > 0:
+# 		node = queue.pop()
+# 		prefix = "comment:" + str(node)
+# 		response = conn.hgetall(prefix)
 
-		if node in hidden_comment_ids_set or response["author".encode()].decode() in blacklisted_user_ids:
-			continue
+# 		if node in hidden_comment_ids_set or response["author".encode()].decode() in blacklisted_user_ids:
+# 			continue
 
-		encoded_authors.add(response["author".encode()])
+# 		encoded_authors.add(response["author".encode()])
 
-		serialized_comment = redis_comment_serializer(response)
-		# emojis_id_arr, user_ids_arr_per_emoji_dict, emoji_reaction_count_dict, encoded_authors = redis_generate_emojis_response(prefix, encoded_authors, user_id)
-		# serialized_comment["emojis"] = {"emojis_id_arr": emojis_id_arr, "user_ids_arr_per_emoji_dict": user_ids_arr_per_emoji_dict, "emoji_reaction_count_dict": emoji_reaction_count_dict}
+# 		serialized_comment = redis_comment_serializer(response)
+# 		# emojis_id_arr, user_ids_arr_per_emoji_dict, emoji_reaction_count_dict, encoded_authors = redis_generate_emojis_response(prefix, encoded_authors, user_id)
+# 		# serialized_comment["emojis"] = {"emojis_id_arr": emojis_id_arr, "user_ids_arr_per_emoji_dict": user_ids_arr_per_emoji_dict, "emoji_reaction_count_dict": emoji_reaction_count_dict}
 
-		comments_to_be_added.append(serialized_comment)
+# 		comments_to_be_added.append(serialized_comment)
 
-		vote_id_response = conn.hget("vote:user:" + str(user_id), "comment:" + str(node))
-		if vote_id_response != None:
-			vote_response = conn.hgetall("vote:" + vote_id_response.decode())
-			votes_to_be_added.append(redis_vote_serializer(vote_response))
+# 		vote_id_response = conn.hget("vote:user:" + str(user_id), "comment:" + str(node))
+# 		if vote_id_response != None:
+# 			vote_response = conn.hgetall("vote:" + vote_id_response.decode())
+# 			votes_to_be_added.append(redis_vote_serializer(vote_response))
 
-		size -= 1
-		if size == 0:
-			break
+# 		size -= 1
+# 		if size == 0:
+# 			break
 
-		nested_encoded_comments = conn.zrevrange("comment:" + str(node) + ".ranking", 0, count - 1)
-		for encoded_comment in nested_encoded_comments:
-			_, comment_id = encoded_comment.decode().split(":")
-			queue.appendleft(comment_id)
+# 		nested_encoded_comments = conn.zrevrange("comment:" + str(node) + ".ranking", 0, count - 1)
+# 		for encoded_comment in nested_encoded_comments:
+# 			_, comment_id = encoded_comment.decode().split(":")
+# 			queue.appendleft(comment_id)
 
-	user_serializer = []
-	for encoded_author in encoded_authors:
-		user_response = conn.hgetall("user:" + encoded_author.decode())
-		user_serializer.append(redis_user_serializer(user_response))
+# 	user_serializer = []
+# 	for encoded_author in encoded_authors:
+# 		user_response = conn.hgetall("user:" + encoded_author.decode())
+# 		user_serializer.append(redis_user_serializer(user_response))
 
-	more_comments_response = [redis_comment_serializer(conn.hgetall("comment:" + str(node))) for node in list(reversed(queue))]
-	next_page_more_comments_response = [redis_comment_serializer(conn.hgetall(encoded_comment.decode())) for encoded_comment in next_page_more_comments]
+# 	more_comments_response = [redis_comment_serializer(conn.hgetall("comment:" + str(node))) for node in list(reversed(queue))]
+# 	next_page_more_comments_response = [redis_comment_serializer(conn.hgetall(encoded_comment.decode())) for encoded_comment in next_page_more_comments]
 
-	return comments_to_be_added, more_comments_response + next_page_more_comments_response, votes_to_be_added, user_serializer
+# 	return comments_to_be_added, more_comments_response + next_page_more_comments_response, votes_to_be_added, user_serializer
 
-def redis_get_tree_by_parent_thread_id(roots, size, next_page_start, count, parent_thread_id, user_id, blacklisted_user_ids, hidden_comment_ids):
-	blacklisted_user_ids_set = set(blacklisted_user_ids)
-	hidden_comment_ids_set = set(hidden_comment_ids)
+# def redis_get_tree_by_parent_thread_id(roots, size, next_page_start, count, parent_thread_id, user_id, blacklisted_user_ids, hidden_comment_ids):
+# 	blacklisted_user_ids_set = set(blacklisted_user_ids)
+# 	hidden_comment_ids_set = set(hidden_comment_ids)
 
-	conn = get_redis_connection('default')
-	queue = []
-	comments_to_be_added = []
-	next_page_more_comments = []
-	votes_to_be_added = []
+# 	conn = get_redis_connection('default')
+# 	queue = []
+# 	comments_to_be_added = []
+# 	next_page_more_comments = []
+# 	votes_to_be_added = []
 
-	if next_page_start == 0:
-		queue = collections.deque([int(encoded_comment.decode().split(":")[1]) for encoded_comment in conn.zrevrange("thread:" + str(parent_thread_id) + ".ranking", 0, count - 1)])
-		next_page_more_comments = conn.zrevrange("thread:" + str(parent_thread_id) + ".ranking", count, 2 * count - 1)
-	else:
-		queue = collections.deque(roots[::-1])
-		next_page_more_comments = conn.zrevrange("thread:" + str(parent_thread_id) + ".ranking", next_page_start + count, next_page_start + 2 * count - 1)
+# 	if next_page_start == 0:
+# 		queue = collections.deque([int(encoded_comment.decode().split(":")[1]) for encoded_comment in conn.zrevrange("thread:" + str(parent_thread_id) + ".ranking", 0, count - 1)])
+# 		next_page_more_comments = conn.zrevrange("thread:" + str(parent_thread_id) + ".ranking", count, 2 * count - 1)
+# 	else:
+# 		queue = collections.deque(roots[::-1])
+# 		next_page_more_comments = conn.zrevrange("thread:" + str(parent_thread_id) + ".ranking", next_page_start + count, next_page_start + 2 * count - 1)
 
-	encoded_authors = set()
-	while queue and size > 0:
-		node = queue.pop()
-		prefix = "comment:" + str(node)
-		response = conn.hgetall(prefix)
+# 	encoded_authors = set()
+# 	while queue and size > 0:
+# 		node = queue.pop()
+# 		prefix = "comment:" + str(node)
+# 		response = conn.hgetall(prefix)
 
-		if node in hidden_comment_ids_set or response["author".encode()].decode() in blacklisted_user_ids:
-			continue
+# 		if node in hidden_comment_ids_set or response["author".encode()].decode() in blacklisted_user_ids:
+# 			continue
 
-		encoded_authors.add(response["author".encode()])
+# 		encoded_authors.add(response["author".encode()])
 
-		serialized_comment = redis_comment_serializer(response)
-		# emojis_id_arr, user_ids_arr_per_emoji_dict, emoji_reaction_count_dict, encoded_authors = redis_generate_emojis_response(prefix, encoded_authors, user_id)
-		# serialized_comment["emojis"] = {"emojis_id_arr": emojis_id_arr, "user_ids_arr_per_emoji_dict": user_ids_arr_per_emoji_dict, "emoji_reaction_count_dict": emoji_reaction_count_dict}
+# 		serialized_comment = redis_comment_serializer(response)
+# 		# emojis_id_arr, user_ids_arr_per_emoji_dict, emoji_reaction_count_dict, encoded_authors = redis_generate_emojis_response(prefix, encoded_authors, user_id)
+# 		# serialized_comment["emojis"] = {"emojis_id_arr": emojis_id_arr, "user_ids_arr_per_emoji_dict": user_ids_arr_per_emoji_dict, "emoji_reaction_count_dict": emoji_reaction_count_dict}
 
-		comments_to_be_added.append(serialized_comment)
+# 		comments_to_be_added.append(serialized_comment)
 
-		vote_id_response = conn.hget("vote:user:" + str(user_id), "comment:" + str(node))
+# 		vote_id_response = conn.hget("vote:user:" + str(user_id), "comment:" + str(node))
 
-		if vote_id_response != None:
-			vote_response = conn.hgetall("vote:" + vote_id_response.decode())
-			votes_to_be_added.append(redis_vote_serializer(vote_response))
+# 		if vote_id_response != None:
+# 			vote_response = conn.hgetall("vote:" + vote_id_response.decode())
+# 			votes_to_be_added.append(redis_vote_serializer(vote_response))
 
-		size -= 1
-		if size == 0:
-			break
+# 		size -= 1
+# 		if size == 0:
+# 			break
 
-		nested_encoded_comments = conn.zrevrange("comment:" + str(node) + ".ranking", 0, count - 1)
-		for encoded_comment in nested_encoded_comments:
-			_, comment_id = encoded_comment.decode().split(":")
-			queue.appendleft(comment_id)
+# 		nested_encoded_comments = conn.zrevrange("comment:" + str(node) + ".ranking", 0, count - 1)
+# 		for encoded_comment in nested_encoded_comments:
+# 			_, comment_id = encoded_comment.decode().split(":")
+# 			queue.appendleft(comment_id)
 
-	user_serializer = []
-	for encoded_author in encoded_authors:
-		user_response = conn.hgetall("user:" + encoded_author.decode())
-		user_serializer.append(redis_user_serializer(user_response))
+# 	user_serializer = []
+# 	for encoded_author in encoded_authors:
+# 		user_response = conn.hgetall("user:" + encoded_author.decode())
+# 		user_serializer.append(redis_user_serializer(user_response))
 
-	more_comments_response = [redis_comment_serializer(conn.hgetall("comment:" + str(node))) for node in list(reversed(queue))]
-	next_page_more_comments_response = [redis_comment_serializer(conn.hgetall(encoded_comment.decode())) for encoded_comment in next_page_more_comments]
-	return comments_to_be_added, more_comments_response + next_page_more_comments_response, votes_to_be_added, user_serializer
+# 	more_comments_response = [redis_comment_serializer(conn.hgetall("comment:" + str(node))) for node in list(reversed(queue))]
+# 	next_page_more_comments_response = [redis_comment_serializer(conn.hgetall(encoded_comment.decode())) for encoded_comment in next_page_more_comments]
+# 	return comments_to_be_added, more_comments_response + next_page_more_comments_response, votes_to_be_added, user_serializer
 
 def flush_redis():
 	conn = get_redis_connection('default')

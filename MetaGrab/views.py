@@ -228,6 +228,7 @@ class ReportViewSet(viewsets.ModelViewSet):
         body_unicode = request.body.decode('utf-8')
         body = json.loads(body_unicode)
         comment_id = body['comment_id']
+        report_reason = body['report_reason']
         comment = Comment.objects.get(pk=comment_id)
         user_id = request.user.id
         user = User.objects.get(pk=user_id)
@@ -532,34 +533,32 @@ class CommentViewSet(viewsets.ModelViewSet):
         return Response({"comment_response": new_redis_comment, "vote_response": new_redis_vote, "user_response": redis_user})
 
     @action(detail=False, methods=['get'])
-    def get_comment_tree_by_parent_comments(self, request, pk=None):
-        roots = request.GET.getlist('roots')
+    def get_comment_tree_by_parent_comment(self, request, pk=None):
         start = int(request.GET['start'])
         count = int(request.GET['count'])
-        size = int(request.GET['count'])
+        size = int(request.GET['size'])
         parent_comment_id = int(request.GET['parent_comment_id'])
         user_id = request.user.id
 
         blacklisted_user_ids = redis_helpers.redis_get_blacklisted_user_ids_by_user_id(user_id)
         hidden_comment_ids = redis_helpers.redis_get_hidden_comment_ids_by_user_id(user_id)
 
-        serialized_added_comments, serialized_more_comments_cache, serialized_votes, users_response = redis_helpers.redis_get_tree_by_parent_comments_id(roots, size, start, count, parent_comment_id, user_id, blacklisted_user_ids, hidden_comment_ids)
-        return Response({"added_comments": serialized_added_comments, "more_comments": serialized_more_comments_cache, "added_votes": serialized_votes, "users_response": users_response})
+        serialized_comments, comment_breaks_arr = redis_helpers.redis_generate_tree_by_parent_comment_id(parent_comment_id, size, count, start, user_id, blacklisted_user_ids, hidden_comment_ids)
+        return Response({"comments_response": serialized_comments, "comment_breaks_arr": comment_breaks_arr})
 
     @action(detail=False, methods=['get'])
     def get_comment_tree_by_thread_id(self, request, pk=None):
-        roots = request.GET.getlist('roots')
         start = int(request.GET['start'])
         count = int(request.GET['count'])
-        size = int(request.GET['count'])
+        size = int(request.GET['size'])
         parent_thread_id = int(request.GET['parent_thread_id'])
         user_id = request.user.id
 
         blacklisted_user_ids = redis_helpers.redis_get_blacklisted_user_ids_by_user_id(user_id)
         hidden_comment_ids = redis_helpers.redis_get_hidden_comment_ids_by_user_id(user_id)
 
-        serialized_added_comments, serialized_more_comments_cache, serialized_votes, users_response = redis_helpers.redis_get_tree_by_parent_thread_id(roots, size, start, count, parent_thread_id, user_id, blacklisted_user_ids, hidden_comment_ids)
-        return Response({"added_comments": serialized_added_comments, "more_comments": serialized_more_comments_cache, "added_votes": serialized_votes, "users_response": users_response})
+        serialized_comments, comment_breaks_arr = redis_helpers.redis_generate_tree_by_parent_thread_id(parent_thread_id, size, count, start, user_id, blacklisted_user_ids, hidden_comment_ids)
+        return Response({"comments_response": serialized_comments, "comment_breaks_arr": comment_breaks_arr})
 
 
 class UserViewSet(viewsets.ModelViewSet):
