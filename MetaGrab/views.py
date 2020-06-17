@@ -494,6 +494,9 @@ class CommentViewSet(viewsets.ModelViewSet):
         new_redis_vote = redis_helpers.redis_insert_vote(new_vote, None, new_comment.id)
         redis_user = redis_helpers.redis_get_user_by_id(user_id)
 
+        new_redis_comment["votes"] = [new_redis_vote]
+        new_redis_comment["users"] = [redis_user]
+
         # emojis_id_arr, user_ids_arr_per_emoji_dict, emoji_reaction_count_dict, _ = redis_helpers.redis_generate_emojis_response("comment:" + str(new_comment.id), set(), user_id)
         # new_redis_comment["emojis"] = {"emojis_id_arr": emojis_id_arr, "user_ids_arr_per_emoji_dict": user_ids_arr_per_emoji_dict, "emoji_reaction_count_dict": emoji_reaction_count_dict}
 
@@ -527,6 +530,8 @@ class CommentViewSet(viewsets.ModelViewSet):
         new_redis_vote = redis_helpers.redis_insert_vote(new_vote, None, new_child_comment.id)
         redis_user = redis_helpers.redis_get_user_by_id(user_id)
 
+        new_redis_comment["votes"] = [new_redis_vote]
+        new_redis_comment["users"] = [redis_user]
         # emojis_id_arr, user_ids_arr_per_emoji_dict, emoji_reaction_count_dict, _ = redis_helpers.redis_generate_emojis_response("comment:" + str(new_child_comment.id), set(), user_id)
         # new_redis_comment["emojis"] = {"emojis_id_arr": emojis_id_arr, "user_ids_arr_per_emoji_dict": user_ids_arr_per_emoji_dict, "emoji_reaction_count_dict": emoji_reaction_count_dict}
 
