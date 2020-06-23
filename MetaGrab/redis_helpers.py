@@ -355,13 +355,22 @@ def redis_insert_visited_game_by_user_id(user_id, game_id):
 def redis_get_game_history_by_user_id(user_id):
 	conn = get_redis_connection('default')
 
+	encoded_follow_games = conn.smembers("follow_games_user:" + str(user_id))
 	encoded_games = conn.zrevrange("game_visit_history:user:" + str(user_id), 0, -1)
 
-	decoded_game_id_arr = []
+	decoded_game_arr = []
 	for encoded_game in encoded_games:
-		decoded_game_id_arr.append(int(encoded_game.decode().split(":")[1]))
 
-	return decoded_game_id_arr
+		serialized_game = redis_game_serializer(conn.hgetall("game:" + str(int(encoded_game.decode().split(":")[1]))))
+		
+		if encoded_game in encoded_follow_games:
+			serialized_game["is_followed"] = True
+
+		serialized_game['thread_count'] = conn.zcard(encoded_game.decode() + ".ranking")
+		serialized_game['follower_count'] = redis_get_game_followers_count(encoded_game.decode().split(":")[1])
+		decoded_game_arr.append(serialized_game)
+
+	return decoded_game_arr
 
 
 def redis_insert_game(game):
@@ -511,7 +520,7 @@ def redis_vote_serializer(vote_response):
 def redis_game_serializer(game_response):
 	decoded_response = {}
 	for key, val in game_response.items():
-		if key in {"thread_count", "follower_count"}:
+		if key in {"thread_count", "follower_count", "is_followed"}:
 			decoded_response[key] = val
 			continue
 
@@ -589,6 +598,7 @@ def redis_get_user_follow_games(user):
 	for encoded_game in encoded_games:
 		decoded_game = encoded_game.decode()
 		response = conn.hgetall(decoded_game)
+		response['is_followed'] = True
 		response['thread_count'] = conn.zcard(decoded_game + ".ranking")
 		response['follower_count'] = redis_get_game_followers_count(decoded_game.split(":")[1])
 
