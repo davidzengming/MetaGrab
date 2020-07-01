@@ -91,10 +91,51 @@ class GameViewSet(viewsets.ModelViewSet):
         prev_10_game_visited_arr = redis_helpers.redis_get_game_history_by_user_id(user_id)
         return Response({"game_history": prev_10_game_visited_arr})
 
+    @action(detail=False, methods=['get'])
+    def get_games_by_genre_id(self, request):
+        genre_id = int(request.GET['genre_id'])
+        start = int(request.GET['start'])
+        count = int(request.GET['count'])
+
+        games_arr, has_next_page = redis_helpers.redis_get_game_list_by_genre_id_range(genre_id, start, count)
+        return Response({"games_arr": games_arr, "has_next_page": has_next_page})
+
+    @action(detail=False, methods=['get'])
+    def get_games_at_epoch_time(self, request):
+        time_point_in_epoch = int(request.GET['time_point_in_epoch'])
+        count = int(request.GET['count'])
+        game_arr, time_scores = redis_helpers.redis_get_game_list_at_epoch_time(time_point_in_epoch, count)
+        return Response({"game_arr": game_arr, "time_scores": time_scores})
+
+    @action(detail=False, methods=['get'])
+    def get_games_before_epoch_time(self, request):
+        time_point_in_epoch = int(request.GET['time_point_in_epoch'])
+        count = int(request.GET['count'])
+        game_arr, time_scores = redis_helpers.redis_get_game_list_by_before_epoch_time(time_point_in_epoch, count)
+
+        return Response({"game_arr": game_arr, "time_scores": time_scores})
+
+    @action(detail=False, methods=['get'])
+    def get_games_after_epoch_time(self, request):
+        time_point_in_epoch = int(request.GET['time_point_in_epoch'])
+        count = int(request.GET['count'])
+
+        game_arr, time_scores = redis_helpers.redis_get_game_list_by_after_epoch_time(time_point_in_epoch, count)
+
+        return Response({"game_arr": game_arr, "time_Scores": time_scores})
+
 
 class GenreViewSet(viewsets.ModelViewSet):
     queryset = Genre.objects.all()
     serializer_class = GenreSerializer
+
+    @action(detail=False, methods=['get'])
+    def get_genres_by_range(self, request):
+        start = int(request.GET['start'])
+        count = int(request.GET['count'])
+
+        genres_arr, has_next_page = redis_helpers.redis_get_genres_by_range(start, count)
+        return Response({"genres_arr": genres_arr, "has_next_page": has_next_page})
 
 
 class DeveloperViewSet(viewsets.ModelViewSet):
@@ -105,6 +146,14 @@ class DeveloperViewSet(viewsets.ModelViewSet):
 class ForumViewSet(viewsets.ModelViewSet):
     queryset = Forum.objects.all()
     serializer_class = ForumSerializer
+
+    @action(detail=False, methods=['get'])
+    def get_forum_stats(self, request):
+        game_id = int(request.GET['game_id'])
+        user_id = request.user.id
+
+        is_followed, follower_count, thread_count = redis_helpers.redis_get_forum_stats(game_id, user_id)
+        return Response({"is_followed": is_followed, "follower_count": follower_count, "thread_count": thread_count})
 
 
 class ThreadViewSet(viewsets.ModelViewSet):

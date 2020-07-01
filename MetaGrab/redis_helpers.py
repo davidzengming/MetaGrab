@@ -184,7 +184,80 @@ def redis_insert_user(user):
 	conn = get_redis_connection('default')
 	redis_user_object = transform_user_to_redis_object(user)
 	conn.hmset("user:" + str(user.id), redis_user_object)
+
+
+def redis_get_game_list_at_epoch_time(time_point_in_epoch, count):
+	conn = get_redis_connection('default')
+
+	before_games_arr, before_scores = redis_get_game_list_by_before_epoch_time(time_point_in_epoch + 1, count)
+	after_games_arr, after_scores = redis_get_game_list_by_after_epoch_time(time_point_in_epoch, count)
+
+	return before_games_arr[::-1] + after_games_arr, before_scores[::-1] + after_scores
+
+
+def redis_get_game_list_by_before_epoch_time(time_point_in_epoch, count):
+	conn = get_redis_connection('default')
+
+	# zrevrangebyscore(name, max, min, start=None, num=None, withscores=False, score_cast_func=<type 'float'>)
+
+	encoded_games_with_scores = []
+	encoded_games_with_scores = conn.zrevrangebyscore("game_timeline", time_point_in_epoch - 1, -float("inf"), 0, count, withscores=True)
+
+	games_arr = []
+	scores = []
+
+	last_score = None
+	seen_encoded_games = set()
+
+	for encoded_game, score in encoded_games_with_scores:
+		serialized_game = redis_game_serializer(conn.hgetall(encoded_game.decode()))
+		seen_encoded_games.add(encoded_game)
+		games_arr.append(serialized_game)
+		scores.append(score)
+		last_score = score
 	
+	if last_score != None:
+		games_with_last_score = conn.zrevrangebyscore("game_timeline", last_score, last_score, withscores=True)
+		for encoded_game, _ in encoded_games_with_scores:
+			if encoded_game in seen_encoded_games:
+				continue
+
+			serialized_game = redis_game_serializer(conn.hgetall(encoded_game.decode()))
+			game_arr.append(serialized_game)
+			scores.append(last_score)
+
+	return games_arr, scores
+
+
+def redis_get_game_list_by_after_epoch_time(time_point_in_epoch, count):
+	conn = get_redis_connection('default')
+
+	encoded_games_with_scores = conn.zrangebyscore("game_timeline", time_point_in_epoch + 1, float("inf"), 0, count, withscores=True)
+	
+	games_arr = []
+	scores = []
+
+	last_score = None
+	seen_encoded_games = set()
+
+	for encoded_game, score in encoded_games_with_scores:
+		serialized_game = redis_game_serializer(conn.hgetall(encoded_game.decode()))
+		seen_encoded_games.add(encoded_game)
+		games_arr.append(serialized_game)
+		scores.append(score)
+		last_score = score
+	
+	if last_score != None:
+		games_with_last_score = conn.zrangebyscore("game_timeline", last_score, last_score, withscores=True)
+		for encoded_game, _ in games_with_last_score:
+			if encoded_game in seen_encoded_games:
+				continue
+
+			serialized_game = redis_game_serializer(conn.hgetall(encoded_game.decode()))
+			game_arr.append(serialized_game)
+			scores.append(last_score)
+
+	return games_arr, scores
 
 def redis_get_blacklisted_user_ids_by_user_id(user_id):
 	conn = get_redis_connection('default')
@@ -363,15 +436,56 @@ def redis_get_game_history_by_user_id(user_id):
 
 		serialized_game = redis_game_serializer(conn.hgetall("game:" + str(int(encoded_game.decode().split(":")[1]))))
 		
-		if encoded_game in encoded_follow_games:
-			serialized_game["is_followed"] = True
+		# if encoded_game in encoded_follow_games:
+		# 	serialized_game["is_followed"] = True
 
-		serialized_game['thread_count'] = conn.zcard(encoded_game.decode() + ".ranking")
-		serialized_game['follower_count'] = redis_get_game_followers_count(encoded_game.decode().split(":")[1])
+		# serialized_game['thread_count'] = conn.zcard(encoded_game.decode() + ".ranking")
+		# serialized_game['follower_count'] = redis_get_game_followers_count(encoded_game.decode().split(":")[1])
 		decoded_game_arr.append(serialized_game)
 
 	return decoded_game_arr
 
+
+def redis_get_game_list_by_genre_id_range(genre_id, start, count):
+	conn = get_redis_connection('default')
+	has_next_page = False
+
+	games_arr = []
+
+	encoded_game_ids = conn.lrange("genre_game_list:" + str(genre_id), start, start + count - 1)
+	for encoded_game_id in encoded_game_ids:
+
+		games_arr.append(redis_game_serializer(conn.hgetall(encoded_game_id.decode())))
+
+	if (start + count) < conn.llen("genre_game_list:" + str(genre_id)):
+		has_next_page = True
+
+	return games_arr, has_next_page
+
+def redis_get_genres_by_range(start, count):
+	conn = get_redis_connection('default')
+	has_next_page = False
+
+	genre_arr = []
+	encoded_genre_ids = conn.lrange("genres", start, start + count - 1)
+	for encoded_genre_id in encoded_genre_ids:
+
+		genre_arr.append(redis_genre_serializer(conn.hgetall(encoded_genre_id.decode())))
+
+	if (start + count - 1) < conn.llen("genres"):
+		has_next_page = True
+
+	return genre_arr, has_next_page
+
+
+def redis_get_forum_stats(game_id, user_id):
+	conn = get_redis_connection('default')
+
+	is_followed = conn.sismember("game_followers:" + str(game_id), "user:" + str(user_id))
+	follower_count = conn.scard("game_followers:" + str(game_id))
+	thread_count = conn.zcard("game:" + str(game_id) + ".ranking")
+
+	return is_followed, follower_count, thread_count
 
 def redis_insert_game(game):
 	redis_insert_developer(game.developer)
@@ -380,8 +494,9 @@ def redis_insert_game(game):
 	conn = get_redis_connection('default')
 	redis_game_object = transform_game_to_redis_object(game)
 	conn.hmset("game:" + str(game.id), redis_game_object)
-	conn.zadd("game_release_timeline:year:" + str(game.release_date.year) + "month:" + str(game.release_date.month), {"game:" + str(game.id): game.release_date.day})
-	conn.rpush("games", "game:" + str(game.id))
+	# conn.zadd("game_release_timeline:year:" + str(game.release_date.year) + "month:" + str(game.release_date.month), {"game:" + str(game.id): game.release_date.day})
+	conn.zadd("game_timeline", {"game:" + str(game.id): convert_date_to_unix(game.release_date)})
+	conn.rpush("genre_game_list:" + str(game.genre.id), "game:" + str(game.id))
 	return redis_game_serializer(conn.hgetall("game:" + str(game.id)))
 
 def redis_insert_developer(developer):
@@ -394,6 +509,8 @@ def redis_insert_genre(genre):
 	conn = get_redis_connection('default')
 	redis_genre_object = transform_genre_to_redis_object(genre)
 	conn.hmset("genre:" + str(genre.id), redis_genre_object)
+
+	conn.rpush("genres", "genre:" + str(genre.id))
 	return redis_genre_serializer(conn.hgetall("genre:" + str(genre.id)))
 
 def redis_insert_thread(new_thread):
@@ -520,10 +637,6 @@ def redis_vote_serializer(vote_response):
 def redis_game_serializer(game_response):
 	decoded_response = {}
 	for key, val in game_response.items():
-		if key in {"thread_count", "follower_count", "is_followed"}:
-			decoded_response[key] = val
-			continue
-
 		decoded_key = key.decode()
 		if decoded_key in transformer_dict:
 			decoded_response[decoded_key] = transformer_dict[decoded_key](val.decode())
@@ -598,9 +711,9 @@ def redis_get_user_follow_games(user):
 	for encoded_game in encoded_games:
 		decoded_game = encoded_game.decode()
 		response = conn.hgetall(decoded_game)
-		response['is_followed'] = True
-		response['thread_count'] = conn.zcard(decoded_game + ".ranking")
-		response['follower_count'] = redis_get_game_followers_count(decoded_game.split(":")[1])
+		# response['is_followed'] = True
+		# response['thread_count'] = conn.zcard(decoded_game + ".ranking")
+		# response['follower_count'] = redis_get_game_followers_count(decoded_game.split(":")[1])
 
 		serializer.append(redis_game_serializer(response))
 
