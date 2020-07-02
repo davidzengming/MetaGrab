@@ -62,7 +62,8 @@ def transform_genre_to_redis_object(genre):
 	data = {
 		"id": genre.id,
 		"created": convert_datetime_to_unix(genre.created),
-		"name": genre.name
+		"name": genre.name,
+		"long_name": genre.long_name
 	}
 	return data
 

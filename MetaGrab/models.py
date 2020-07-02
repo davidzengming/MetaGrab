@@ -16,6 +16,7 @@ class Developer(models.Model):
 
 class Genre(models.Model):
     name = models.CharField(max_length = 100)
+    long_name = models.CharField(max_length = 100)
     created = models.DateTimeField(default=now, editable=False)
 
     def __str__(self):
