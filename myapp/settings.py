@@ -30,7 +30,7 @@ SECRET_KEY = 'qhebqp1^x6#l#dd!dzehvfd_yrubiy$7s=2+syim9run4b7dn0'
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['134.122.31.85', '127.0.0.1']
 
 
 # Application definition
@@ -79,8 +79,8 @@ TEMPLATES = [
 WSGI_APPLICATION = 'myapp.wsgi.application'
 
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=90),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
 }
 
 # Database
