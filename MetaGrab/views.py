@@ -21,7 +21,8 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
         data['refresh'] = str(refresh)
         data['access'] = str(refresh.access_token)
         data['user_id'] = self.user.id
-        data['exp_date_epoch'] = refresh.payload['exp'] #expire time in epoch
+        data['refresh_exp_date_epoch'] = refresh.payload['exp'] #expire time in epoch
+        data['access_exp_date_epoch'] = refresh.access_token.payload['exp']
         # Add extra responses here
         # data['user'] = Users.objects.get(pk=self.user.user_id)
         # data['groups'] = self.user.groups.values_list('name', flat=True)
