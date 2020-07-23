@@ -30,7 +30,7 @@ class Game(models.Model):
     developer = models.ForeignKey(Developer, on_delete=models.CASCADE)
     genre = models.ForeignKey(Genre, on_delete=models.CASCADE)
     last_updated = models.DateField()
-    icon = models.URLField(default="https://images2.alphacoders.com/474/thumb-1920-474206.jpg")
+    icon = models.URLField(max_length=500, default="https://images2.alphacoders.com/474/thumb-1920-474206.jpg")
     banner = models.URLField(max_length=500, default="https://res.cloudinary.com/dzengcdn/image/upload/c_fill,g_auto,h_250,w_970/b_rgb:000000,e_gradient_fade,y_-0.50/c_scale,co_rgb:ffffff,fl_relative/v1575913613/dota2_tkcbuh.jpg")
 
     game_summary = models.TextField(max_length = 40000)
@@ -75,12 +75,16 @@ class Thread(Votable):
     )
     title = models.TextField(max_length = 200)
     forum = models.ForeignKey(Forum, on_delete=models.CASCADE)
+
     image_urls = JSONField()
+    image_widths = JSONField()
+    image_heights = JSONField()
+
     is_hidden = models.BooleanField(default=False)
 
     @classmethod
-    def create(cls, flair, title, content_string, content_attributes, author, forum, image_urls):
-        thread = cls.objects.create(flair=flair, title=title, content_string=content_string, content_attributes=content_attributes, author=author, forum=forum, image_urls=image_urls)
+    def create(cls, flair, title, content_string, content_attributes, author, forum, image_urls, image_widths, image_heights):
+        thread = cls.objects.create(flair=flair, title=title, content_string=content_string, content_attributes=content_attributes, author=author, forum=forum, image_urls=image_urls, image_widths=image_widths, image_heights=image_heights)
         return thread
 
     def increment_upvotes(self):

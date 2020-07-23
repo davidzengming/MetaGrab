@@ -1,0 +1,304 @@
+{
+	"games": [
+		{
+			"name": "Dota 2",
+			"release_date": "2013-07-09",
+			"icon": "https://res.cloudinary.com/dzengcdn/image/upload/v1595350249/dota-2-valve_ffyiuo.jpg",
+			"banner": "https://res.cloudinary.com/dzengcdn/image/upload/v1595352894/screenshot_01_fya5z7.jpg",
+			"game_summary": "Dota 2 is a multiplayer online battle arena (MOBA) video game in which two teams of five players compete to collectively destroy a large structure defended by the opposing team known as the 'Ancient', whilst defending their own.",
+			"developer": "Valve",
+			"genre": "MOBA"
+		},
+		{
+			"name": "League of Legends",
+			"release_date": "2009-10-27",
+			"icon": "https://res.cloudinary.com/dzengcdn/image/upload/v1595350559/league-of-legends_rwj8kq.jpg",
+			"banner": "https://res.cloudinary.com/dzengcdn/image/upload/v1595353081/lol-gotd-3_pqq3kk.jpg",
+			"game_summary": "In League of Legends, players assume the role of a 'champion' with unique abilities and battle against a team of other player- or computer-controlled champions. The goal is usually to destroy the opposing team's Nexus, a structure that lies at the heart of a base protected by defensive structures, although other distinct game modes exist as well with varying objectives, rules, and maps.",
+			"developer": "Riot",
+			"genre": "MOBA"
+		},
+
+		{
+			"name": "Path of Exile",
+			"release_date": "2013-10-23",
+			"icon": "https://res.cloudinary.com/dzengcdn/image/upload/v1595353395/29zSL_prqe2m.jpg",
+			"banner": "https://res.cloudinary.com/dzengcdn/image/upload/v1595353229/path-of-exile-screenshot-01-ps4-us-23oct2018_vwn5au.jpg",
+			"game_summary": "Path of Exile is an online Action RPG set in the dark fantasy world of Wraeclast. It is designed around a strong barter-based online item economy, deep character customisation, competitive PvP and ladder races. Path of Exile is an online Action RPG set in the dark fantasy world of Wraeclast.",
+			"developer": "Grinding Gear Games",
+			"genre": "Action"
+		},
+		{
+			"name": "Diablo 3",
+			"release_date": "2012-05-15",
+			"icon": "https://res.cloudinary.com/dzengcdn/image/upload/v1595353498/d3-icon.png_wlbrb2.jpg",
+			"banner": "https://res.cloudinary.com/dzengcdn/image/upload/v1595353551/maxresdefault_vw1low.jpg",
+			"game_summary": "The game takes place in Sanctuary, the dark fantasy world of the Diablo Series, twenty years after the events of Diablo II. Deckard Cain and Leah are in Tristram Cathedral (the same cathedral that was the setting of Diablo) investigating ancient texts regarding an ominous prophecy.",
+			"developer": "Blizzard Entertainment",
+			"genre": "Action"
+		},
+
+		{
+			"name": "Horizon Zero Dawn",
+			"release_date": "2020-08-07",
+			"icon": "https://res.cloudinary.com/dzengcdn/image/upload/v1595353656/Horizon_Zero_Dawn_ibecui.jpg",
+			"banner": "https://res.cloudinary.com/dzengcdn/image/upload/v1595353737/maxresdefault_roabpc.jpg",
+			"game_summary": "Horizon Zero Dawn is an action role-playing game developed by Guerrilla Games and published by Sony Interactive Entertainment. The plot follows Aloy, a hunter in a world overrun by machines, who sets out to uncover her past.",
+			"developer": "Blizzard Entertainment",
+			"genre": "Action"
+		},
+		{
+			"name": "Watch Dogs: Legion",
+			"release_date": "2020-10-29",
+			"icon": "https://res.cloudinary.com/dzengcdn/image/upload/v1595353814/zTNCdVwQBmERnpqphf8g7uUZuh6NuFpk_wmpqvb.png",
+			"banner": "https://res.cloudinary.com/dzengcdn/image/upload/v1595353865/maxresdefault_x2u7qk.jpg",
+			"game_summary": "The game's story focuses on the efforts of the London branch of DedSec in combating an authoritarian regime that has taken control of the United Kingdom, thanks to the CTOS. To assist in this, DedSec recruits allies from across the city in order to liberate the city as a resistance force.",
+			"developer": "Ubisoft Toronto",
+			"genre": "Action"
+		},
+		{
+			"name": "Assassin's Creed Valhalla",
+			"release_date": "2020-11-17",
+			"icon": "https://res.cloudinary.com/dzengcdn/image/upload/v1595354024/Screen_Shot_2020_04_29_at_4.07.56_PM_doo6l6.jpg",
+			"banner": "https://res.cloudinary.com/dzengcdn/image/upload/v1595354115/maxresdefault_yqofuy.jpg",
+			"game_summary": "Assassin's Creed Valhalla is an open world action-adventure game, structured around several main story quests and numerous optional side missions. The player takes on the role of Eivor, a Viking raider, as they lead their fellow Vikings against the Anglo-Saxon kingdoms.",
+			"developer": "Ubisoft Montreal",
+			"genre": "Action"
+		},
+		{
+			"name": "Cyberpunk 2077",
+			"release_date": "2020-11-19",
+			"icon": "https://res.cloudinary.com/dzengcdn/image/upload/v1595354275/cyberpunk-2077-listing-thumb-01-ps4-06jun19-en-us_gumh9y.png",
+			"banner": "https://res.cloudinary.com/dzengcdn/image/upload/v1595354337/cyberpunk-2077_1535441606529_qoc4ei.jpg",
+			"game_summary": "Cyberpunk 2077 is an open-world, action-adventure story set in Night City, a megalopolis obsessed with power, glamour and body modification. You play as V, a mercenary outlaw going after a one-of-a-kind implant that is the key to immortality.",
+			"developer": "CD Projekt Red",
+			"genre": "Action"
+		},
+
+
+		{
+			"name": "Street Fighter V",
+			"release_date": "2016-02-16",
+			"icon": "https://res.cloudinary.com/dzengcdn/image/upload/v1595354470/street-fighter-v-listing-thumb-01-ps4-us-03dec14_o2ddhp.png",
+			"banner": "https://res.cloudinary.com/dzengcdn/image/upload/v1595354518/maxresdefault_grjvdv.jpg",
+			"game_summary": "Street Fighter V is a fighting game developed by Capcom and Dimps and published by Capcom for the PlayStation 4 and Microsoft Windows in 2016",
+			"developer": "Capcom",
+			"genre": "Fighting"
+		},
+		{
+			"name": "Tekken 7",
+			"release_date": "2015-03-18",
+			"icon": "https://res.cloudinary.com/dzengcdn/image/upload/v1595354828/Tekken-7-05-HD_hrdv5g.png",
+			"banner": "https://res.cloudinary.com/dzengcdn/image/upload/v1595355062/02gUtbJTYO16mF2NzNwWW0c-8.fit_scale.size_1028x578.v_1569474448_pw3vhf.jpg",
+			"game_summary": "Tekken 7 is a fighting game developed and published by Bandai Namco Entertainment. It is the ninth overall installment in the Tekken series. Set shortly after the events of Tekken 6, the plot focuses on the events leading up to the final battle between martial artist Heihachi Mishima and his son, Kazuya.",
+			"developer": "BANDAI NAMCO",
+			"genre": "Fighting"
+		},
+		{
+			"name": "Dragon Ball Fighter Z",
+			"release_date": "2018-01-26",
+			"icon": "https://res.cloudinary.com/dzengcdn/image/upload/v1595355422/cR70EBqOGpU12RMOHrwmRTBkQEq1xPCa_nws9ig.png",
+			"banner": "https://res.cloudinary.com/dzengcdn/image/upload/v1595355463/maxresdefault_c8cwp9.jpg",
+			"game_summary": "The gameplay is inspired by concepts from several other fighting games, namely the control scheme and team mechanics. Players each select three characters to form a team, from an initial roster of characters from the Dragon Ball franchise. All three of the opponent's characters must be defeated to win the game.",
+			"developer": "Arc System Works",
+			"genre": "Fighting"
+		},
+		{
+			"name": "Super Smash Bros. Ultimate",
+			"release_date": "2018-12-07",
+			"icon": "https://res.cloudinary.com/dzengcdn/image/upload/v1595355697/20180613_1_ugz0aw.jpg",
+			"banner": "https://res.cloudinary.com/dzengcdn/image/upload/v1595355749/SSBU-header_phnekx.jpg",
+			"game_summary": "Super Smash Bros. Ultimate is a fighting game for up to eight players in which characters from Nintendo games and other third-party franchises must try to knock each other out of an arena. Players can adjust the rules to their liking and save them as presets for future matches.",
+			"developer": "Nintendo",
+			"genre": "Fighting"
+		},
+
+
+		{
+			"name": "Valorant",
+			"release_date": "2020-06-02",
+			"icon": "https://res.cloudinary.com/dzengcdn/image/upload/v1595356084/LogoVersion_Beta_Key_Art_VALORANT_nns3na.jpg",
+			"banner": "https://res.cloudinary.com/dzengcdn/image/upload/v1595355988/Valorant-Gameplay-3_jb36oh.png",
+			"game_summary": "Valorant is a team-based tactical shooter and first-person shooter set in the near-future. Players assume the control of agents, characters who come from several countries and cultures around the world. In the main game mode, players join either the attacking or defending team with each team having five players on it.",
+			"developer": "Riot",
+			"genre": "FPS"
+		},
+		{
+			"name": "Call of Duty: Modern Warfare",
+			"release_date": "2019-08-23",
+			"icon": "https://res.cloudinary.com/dzengcdn/image/upload/v1595356274/Call-of-Duty-Modern-Warfare-720_zhgkew.jpg",
+			"banner": "https://res.cloudinary.com/dzengcdn/image/upload/v1595356338/maxresdefault_slotoj.jpg",
+			"game_summary": "The campaign follows a CIA officer and British SAS forces as they team up with rebels from the fictional country of Urzikstan, combating together against Russian forces who have invaded the country. The game's Special Ops mode features cooperative play missions that follow up the campaign's story.",
+			"developer": "Activision",
+			"genre": "FPS"
+		},
+		{
+			"name": "Counter-Strike: Global Offensive",
+			"release_date": "2012-08-21",
+			"icon": "https://res.cloudinary.com/dzengcdn/image/upload/v1595356556/image_cover_qqkwwr.jpg",
+			"banner": "https://res.cloudinary.com/dzengcdn/image/upload/v1595356540/maxresdefault_ltuscn.jpg",
+			"game_summary": "The game pits two teams against each other: the Terrorists and the Counter-Terrorists. The Terrorists, depending on the game mode, must either plant the bomb or defend the hostages, while the Counter-Terrorists must either prevent the bomb from being planted, defuse the bomb, or rescue the hostages.",
+			"developer": "Valve",
+			"genre": "FPS"
+		},
+
+
+		{
+			"name": "Fortnite",
+			"release_date": "2017-07-25",
+			"icon": "https://res.cloudinary.com/dzengcdn/image/upload/v1595356843/Ho0iGApLnG9jQ5rj5hI4SA2Q_y2ejzc.png",
+			"banner": "https://res.cloudinary.com/dzengcdn/image/upload/v1595356791/maxresdefault_tumjav.jpg",
+			"game_summary": "Fortnite is a survival game where 100 players fight against each other in player versus player combat to be the last one standing. It is a fast-paced, action-packed game, not unlike The Hunger Games, where strategic thinking is a must in order to survive.",
+			"developer": "Epic Games",
+			"genre": "Shooter"
+		},
+		{
+			"name": "PlayerUnknown's Battlegrounds",
+			"release_date": "2016-07-30",
+			"icon": "https://res.cloudinary.com/dzengcdn/image/upload/v1595358095/5c053f85499ade47dc29dc38_mhifrf.jpg",
+			"banner": "https://res.cloudinary.com/dzengcdn/image/upload/v1595358155/maxresdefault_quppxg.jpg",
+			"game_summary": "Battlegrounds is a player versus player shooter game in which up to one hundred players fight in a battle royale, a type of large-scale last man standing deathmatch where players fight to remain the last alive. Players can choose to enter the match solo, duo, or with a small team of up to four people.",
+			"developer": "PUBG Corporation",
+			"genre": "Shooter"
+		},
+		{
+			"name": "Apex Legends",
+			"release_date": "2019-04-04",
+			"icon": "https://res.cloudinary.com/dzengcdn/image/upload/v1595358352/apex-legends---button-fin-1549319070496_hdytwg.jpg",
+			"banner": "https://res.cloudinary.com/dzengcdn/image/upload/v1595358429/apex-legends-screen-3_lx8pus.jpg",
+			"game_summary": "Apex Legends is a free-to-play first-person shooter battle royale game developed by Respawn Entertainment and published by Electronic Arts. In Apex Legends, up to 20 three-person squads land on an island and search for weapons and supplies before attempting to defeat all other players in combat.",
+			"developer": "Respawn Entertainment",
+			"genre": "Shooter"
+		},
+
+
+		{
+			"name": "Minecraft",
+			"release_date": "2009-05-17",
+			"icon": "https://res.cloudinary.com/dzengcdn/image/upload/v1595358511/512dVKB22QL_fxcqu8.png",
+			"banner": "https://res.cloudinary.com/dzengcdn/image/upload/v1595358597/minecraft-screenshot-05-ps4-05dec19-en-us_wskwtw.jpg",
+			"game_summary": "Minecraft is a sandbox video game developed by Mojang Studios. In Minecraft, players explore a blocky, procedurally-generated 3D world with infinite terrain, and may discover and extract raw materials, craft tools and items, and build structures or earthworks.",
+			"developer": "Mojang Studios",
+			"genre": "Adventure"
+		},
+		{
+			"name": "Ghost of Tsushima",
+			"release_date": "2020-07-17",
+			"icon": "https://res.cloudinary.com/dzengcdn/image/upload/v1595358767/Ghost_of_Tsushima_xkan18.jpg",
+			"banner": "https://res.cloudinary.com/dzengcdn/image/upload/v1595358929/ET3ORHJODFAT3PZ2GPEQS3HWZA_gb9rjx.jpg",
+			"game_summary": "Featuring an open world for players to explore, it revolves around Jin Sakai, one of the last samurai on Tsushima Island during the first Mongol invasion of Japan in 1274.",
+			"developer": "Sucker Punch Productions",
+			"genre": "Adventure"
+		},
+		{
+			"name": "Death Stranding",
+			"release_date": "2019-11-08",
+			"icon": "https://res.cloudinary.com/dzengcdn/image/upload/v1595359018/death-stranding---button-20197-1563692244528_pjbreh.jpg",
+			"banner": "https://res.cloudinary.com/dzengcdn/image/upload/v1595359092/death-stranding-guide-1_prkbxs.jpg",
+			"game_summary": "Death Stranding is an action game developed by Kojima Productions. The game is set in the United States during the aftermath of the eponymous Death Stranding, which caused destructive creatures from a realm between life and death to begin roaming the Earth.",
+			"developer": "Kojima Studios",
+			"genre": "Adventure"
+		},
+
+
+		{
+			"name": "World of Warcraft",
+			"release_date": "2004-11-23",
+			"icon": "https://res.cloudinary.com/dzengcdn/image/upload/v1595359213/card-world-of-warcraft-54576e6364584e35_jhprtd.jpg",
+			"banner": "https://res.cloudinary.com/dzengcdn/image/upload/v1595359423/world-of-warcraft-wrath-of-the-lich-king-07_vlohog.png",
+			"game_summary": "Four years have passed since the mortal races stood together against the might of the Burning Legion. Peace is fading. The lands of the world of Azeroth have once again become host to a World of Warcraft.",
+			"developer": "Blizzard Entertainment",
+			"genre": "MMORPG"
+		},
+		{
+			"name": "Final Fantasy XIV",
+			"release_date": "2010-09-30",
+			"icon": "https://res.cloudinary.com/dzengcdn/image/upload/v1595359623/image_jjer8s.jpg",
+			"banner": "https://res.cloudinary.com/dzengcdn/image/upload/v1595366026/2524218-0002_fx30ch.jpg",
+			"game_summary": "Final Fantasy XIV takes place in the fictional land of Eorzea, five years after the events of the original 2010 release. At the conclusion of the original game, the primal dragon Bahamut escapes from its lunar prison to initiate the Seventh Umbral Calamity, an apocalyptic event which destroys much of Eorzea.",
+			"developer": "Square Enix",
+			"genre": "MMORPG"
+		},
+		{
+			"name": "Black Desert Online",
+			"release_date": "2014-12-01",
+			"icon": "https://res.cloudinary.com/dzengcdn/image/upload/v1595359745/capsule_616x353_iglifc.jpg",
+			"banner": "https://res.cloudinary.com/dzengcdn/image/upload/v1595359778/maxresdefault_wsvupx.jpg",
+			"game_summary": "Black Desert Online is a sandbox-oriented fantasy massively multiplayer online role-playing game (MMORPG) developed by Korean video game developer Pearl Abyss and originally published for Microsoft Windows in 2015.",
+			"developer": "Pearl Abyss",
+			"genre": "MMORPG"
+		},
+
+
+
+		{
+			"name": "Hearthstone",
+			"release_date": "2014-03-11",
+			"icon": "https://res.cloudinary.com/dzengcdn/image/upload/v1595359948/facebook-share-default-04812acb25dba13239f3dbe52750ff0f4ae58cc52b5924e7cf6ffea5e1b8993d4f07bb5918b25cb9f8bb8f626f694e20e579f8eb50a43de1c1fd2fc1d6c81a60_pbgycu.jpg",
+			"banner": "https://res.cloudinary.com/dzengcdn/image/upload/v1595360066/Hearthstone-Screenshot-03-29-18-19.00.17_gbnwm7.png",
+			"game_summary": "Set within the Warcraft universe, Hearthstone is a digital-only, turn-based collectible card game which pits two opponents against each other. Each player uses a deck of cards from their collection with the end goal being to reduce the opponent's health to zero.",
+			"developer": "Blizzard Entertainment",
+			"genre": "Card & Board Games"
+		},
+
+
+		{
+			"name": "PUBG Mobile",
+			"release_date": "2018-02-09",
+			"icon": "https://res.cloudinary.com/dzengcdn/image/upload/v1595360125/3681346-pubg_20mobile_20made_20_24200m_2B_20last_20month_a1qh3r.jpg",
+			"banner": "https://res.cloudinary.com/dzengcdn/image/upload/v1595360161/PUBG-Mobile-ranks-1-image-1-1024x576_ufuyxq.jpg",
+			"game_summary": "Battlegrounds is a player versus player shooter game in which up to one hundred players fight in a battle royale, a type of large-scale last man standing deathmatch where players fight to remain the last alive. Players can choose to enter the match solo, duo, or with a small team of up to four people.",
+			"developer": "PUBG Corporation",
+			"genre": "Mobile Game"
+		},
+		{
+			"name": "Seven Deadly Sins: Grand Cross",
+			"release_date": "2020-03-03",
+			"icon": "https://res.cloudinary.com/dzengcdn/image/upload/v1595360277/Seven-deadly-Sins-RPG-1420x849_kzjesg.jpg",
+			"banner": "https://res.cloudinary.com/dzengcdn/image/upload/v1595360332/netmarble-gameplay_lcev8w.jpg",
+			"game_summary": "Seven Deadly Sins: Grand Cross is an mobile game, based on the manga and anime series Nanatsu no Taizai, developed by Netmarble for iOS and Android devices.",
+			"developer": "Netmarble",
+			"genre": "Mobile Game"
+		},
+
+
+		{
+			"name": "Starcraft 2",
+			"release_date": "2010-07-27",
+			"icon": "https://res.cloudinary.com/dzengcdn/image/upload/v1595360543/card-starcraft-2-c4f45e7ba6425848_v4rdpl.jpg",
+			"banner": "https://res.cloudinary.com/dzengcdn/image/upload/v1595360614/starcraft-2-heart-of-the-swarm-wallpaper-1_kwyewh.jpg",
+			"game_summary": "StarCraft II: Wings of Liberty is a science fiction real-time strategy video game developed and published by Blizzard Entertainment. The game is set four years after the events of 1998's StarCraft: Brood War, and follows the exploits of Jim Raynor as he leads an insurgent group against the autocratic Terran Dominion.",
+			"developer": "Blizzard Entertainment",
+			"genre": "RTS"
+		},
+		{
+			"name": "Warcraft 3",
+			"release_date": "2002-07-03",
+			"icon": "https://res.cloudinary.com/dzengcdn/image/upload/v1595360992/WarCraft-III-Reign-of-Chaos-PC-Battle-net-Digital-Download_730x410_crop_center_jtsvps.jpg",
+			"banner": "https://res.cloudinary.com/dzengcdn/image/upload/v1595361175/dC3D36H_snuvmi.jpg",
+			"game_summary": "Warcraft III is set several years after the events of Warcraft II, and tells the story of the Burning Legion's attempt to conquer the fictional world of Azeroth with the help of an army of the Undead, led by fallen paladin Arthas Menethil.",
+			"developer": "Blizzard Entertainment",
+			"genre": "RTS"
+		},
+		{
+			"name": "Age of Empires 2: Definitive Edition",
+			"release_date": "2019-11-14",
+			"icon": "https://res.cloudinary.com/dzengcdn/image/upload/v1595361256/latest_vjlprb.jpg",
+			"banner": "https://res.cloudinary.com/dzengcdn/image/upload/v1595361300/ss_f270aa4e146459dc8b75a69bfecf23d13b0e8df6.1920x1080_xqyzws.jpg",
+			"game_summary": "Age of Empires II: Definitive Edition is a real-time strategy video game developed by Forgotten Empires and published by Xbox Game Studios. It is a remaster of the original game Age of Empires II: The Age of Kings, celebrating the 20th anniversary of the original.",
+			"developer": "Forgotten Empires",
+			"genre": "RTS"
+		},
+
+
+		{
+			"name": "Dirt 5",
+			"release_date": "2020-10-06",
+			"icon": "https://res.cloudinary.com/dzengcdn/image/upload/v1595361366/dirt-5-accessibility_dfjlo9.jpg",
+			"banner": "https://res.cloudinary.com/dzengcdn/image/upload/v1595361464/Image6_x1zics.jpg",
+			"game_summary": "Dirt 5 is a racing game focused on off-road racing. A four-player splitscreen system is also introduced into the game. Dirt 5 also features a narrative-focused career mode that pits the player character against a rival driver called Bruno Durand (voiced by Nolan North) in a series of championships.",
+			"developer": "Codemasters Cheshire",
+			"genre": "Racing"
+		}
+	]
+}

@@ -85,6 +85,8 @@ def transform_thread_to_redis_object(thread):
 		"num_childs": thread.num_childs,
 		"num_subtree_nodes": thread.num_subtree_nodes,
 		"image_urls": json.dumps(thread.image_urls),
+		"image_widths": json.dumps(thread.image_widths),
+		"image_heights": json.dumps(thread.image_heights),
 		"is_hidden": "1" if thread.is_hidden == True else "0",
 	}
 
@@ -190,18 +192,16 @@ def redis_insert_user(user):
 def redis_get_game_list_at_epoch_time(time_point_in_epoch, count):
 	conn = get_redis_connection('default')
 
-	before_games_arr, before_scores = redis_get_game_list_by_before_epoch_time(time_point_in_epoch + 1, count)
-	after_games_arr, after_scores = redis_get_game_list_by_after_epoch_time(time_point_in_epoch, count)
+	before_games_arr, before_scores, has_prev_page = redis_get_game_list_by_before_epoch_time(time_point_in_epoch + 1, count)
+	after_games_arr, after_scores, has_next_page = redis_get_game_list_by_after_epoch_time(time_point_in_epoch, count)
 
-	return before_games_arr[::-1] + after_games_arr, before_scores[::-1] + after_scores
+	return before_games_arr[::-1] + after_games_arr, before_scores[::-1] + after_scores, has_prev_page, has_next_page
 
 
 def redis_get_game_list_by_before_epoch_time(time_point_in_epoch, count):
 	conn = get_redis_connection('default')
 
 	# zrevrangebyscore(name, max, min, start=None, num=None, withscores=False, score_cast_func=<type 'float'>)
-
-	encoded_games_with_scores = []
 	encoded_games_with_scores = conn.zrevrangebyscore("game_timeline", time_point_in_epoch - 1, -float("inf"), 0, count, withscores=True)
 
 	games_arr = []
@@ -210,6 +210,7 @@ def redis_get_game_list_by_before_epoch_time(time_point_in_epoch, count):
 	last_score = None
 	seen_encoded_games = set()
 
+	
 	for encoded_game, score in encoded_games_with_scores:
 		serialized_game = redis_game_serializer(conn.hgetall(encoded_game.decode()))
 		seen_encoded_games.add(encoded_game)
@@ -227,14 +228,15 @@ def redis_get_game_list_by_before_epoch_time(time_point_in_epoch, count):
 			game_arr.append(serialized_game)
 			scores.append(last_score)
 
-	return games_arr, scores
+	has_prev_page = True if len(conn.zrevrangebyscore("game_timeline", last_score - 1, -float("inf"), 0, count, withscores=True)) > 0 else False
+
+	return games_arr, scores, has_prev_page
 
 
 def redis_get_game_list_by_after_epoch_time(time_point_in_epoch, count):
 	conn = get_redis_connection('default')
-
 	encoded_games_with_scores = conn.zrangebyscore("game_timeline", time_point_in_epoch + 1, float("inf"), 0, count, withscores=True)
-	
+
 	games_arr = []
 	scores = []
 
@@ -247,7 +249,7 @@ def redis_get_game_list_by_after_epoch_time(time_point_in_epoch, count):
 		games_arr.append(serialized_game)
 		scores.append(score)
 		last_score = score
-	
+
 	if last_score != None:
 		games_with_last_score = conn.zrangebyscore("game_timeline", last_score, last_score, withscores=True)
 		for encoded_game, _ in games_with_last_score:
@@ -258,7 +260,8 @@ def redis_get_game_list_by_after_epoch_time(time_point_in_epoch, count):
 			game_arr.append(serialized_game)
 			scores.append(last_score)
 
-	return games_arr, scores
+	has_next_page = True if len(conn.zrangebyscore("game_timeline", last_score + 1, float("inf"), 0, count, withscores=True)) > 0 else False
+	return games_arr, scores, has_next_page
 
 def redis_get_blacklisted_user_ids_by_user_id(user_id):
 	conn = get_redis_connection('default')
@@ -509,9 +512,10 @@ def redis_insert_developer(developer):
 def redis_insert_genre(genre):
 	conn = get_redis_connection('default')
 	redis_genre_object = transform_genre_to_redis_object(genre)
-	conn.hmset("genre:" + str(genre.id), redis_genre_object)
 
-	conn.rpush("genres", "genre:" + str(genre.id))
+	if conn.exists("genre:" + str(genre.id)) == 0:
+		conn.hmset("genre:" + str(genre.id), redis_genre_object)
+		conn.rpush("genres", "genre:" + str(genre.id))
 	return redis_genre_serializer(conn.hgetall("genre:" + str(genre.id)))
 
 def redis_insert_thread(new_thread):
@@ -751,6 +755,8 @@ transformer_dict = {
 	"is_hidden": redis_sub_operations.convert_to_bool,
 	"content_attributes": redis_sub_operations.convert_to_json,
 	"image_urls": redis_sub_operations.convert_to_json,
+	"image_widths": redis_sub_operations.convert_to_json,
+	"image_heights": redis_sub_operations.convert_to_json,
 
 	#vote
 	"thread": redis_sub_operations.convert_to_int,
@@ -943,7 +949,7 @@ def redis_get_threads_by_game_id(game_id, start, count, user_id, blacklisted_use
 
 # 	return serializer, user_serializer
 
-def redis_generate_comment_tree_node(comment_id, response, user_id, seen_users):
+def redis_generate_comment_tree_node(comment_id, response, user_id, seen_users, count):
 	conn = get_redis_connection('default')
 	def get_author(encoded_author):
 		decoded_author = encoded_author.decode()
@@ -968,6 +974,7 @@ def redis_generate_comment_tree_node(comment_id, response, user_id, seen_users):
 
 	serialized_comment["votes"] = vote_serializer
 	serialized_comment["users"] = user_serializer
+	serialized_comment["has_next_page"] = len(conn.zrevrange("comment:" + str(comment_id) + ".ranking", 0, count - 1)) > 0
 
 	return serialized_comment
 
@@ -982,14 +989,22 @@ def redis_generate_tree_by_parent_comment_id(parent_comment_id, size, count, nex
 	serialized_comment_nodes = []
 
 	comment_breaks_arr = []
-
 	seen_users = {}
-
 	is_first_node = True
+
+	comments_map = {}
+	has_next_page = False
 
 	while q and size > 0:
 		node = q.popleft()
 		nested_encoded_comments = conn.zrevrange("comment:" + str(node) + ".ranking", next_page_start, next_page_start + count - 1)
+		node_has_next_page = len(conn.zrevrange("comment:" + str(node) + ".ranking", next_page_start + count, next_page_start + count * 2 - 1)) > 0
+		
+		if node not in comments_map:
+			has_next_page = node_has_next_page
+		else:
+			comments_map[node]["has_next_page"] = node_has_next_page
+
 		if is_first_node == True:
 			is_first_node = False
 			next_page_start = 0
@@ -1003,7 +1018,10 @@ def redis_generate_tree_by_parent_comment_id(parent_comment_id, size, count, nex
 				continue
 
 			q.append(comment_id)
-			serialized_comment_nodes.append(redis_generate_comment_tree_node(comment_id, response, user_id, seen_users))
+
+			comment_node = redis_generate_comment_tree_node(comment_id, response, user_id, seen_users, count)
+			comments_map[comment_id] = comment_node
+			serialized_comment_nodes.append(comment_node)
 			size -= 1
 			if size == 0:
 				break
@@ -1011,7 +1029,7 @@ def redis_generate_tree_by_parent_comment_id(parent_comment_id, size, count, nex
 		# serialized_comment_nodes.append("#")
 		comment_breaks_arr.append(len(serialized_comment_nodes) - 1)
 
-	return serialized_comment_nodes, comment_breaks_arr
+	return serialized_comment_nodes, comment_breaks_arr, has_next_page
 
 def redis_generate_tree_by_parent_thread_id(parent_thread_id, size, count, next_page_start, user_id, blacklisted_user_ids, hidden_comment_ids):
 	conn = get_redis_connection('default')
@@ -1029,6 +1047,8 @@ def redis_generate_tree_by_parent_thread_id(parent_thread_id, size, count, next_
 	seen_users = {}
 
 	is_first_node = True
+	has_next_page = False
+	comments_map = {}
 
 	while q and size > 0:
 		node = q.popleft()
@@ -1036,10 +1056,13 @@ def redis_generate_tree_by_parent_thread_id(parent_thread_id, size, count, next_
 		encoded_comments = []
 		if is_thread:
 			encoded_comments = conn.zrevrange("thread:" + str(node) + ".ranking", next_page_start, next_page_start + count - 1)
+			has_next_page = len(conn.zrevrange("thread:" + str(node) + ".ranking", next_page_start + count, next_page_start + count * 2 - 1)) > 0
 			is_thread = False
 			next_page_start = 0
 		else:
 			encoded_comments = conn.zrevrange("comment:" + str(node) + ".ranking", next_page_start, next_page_start + count - 1)
+			has_next_page = len(conn.zrevrange("comment:" + str(node) + ".ranking", next_page_start + count, next_page_start + count * 2 - 1)) > 0
+			comments_map["has_next_page"] = has_next_page
 
 		for encoded_comment in encoded_comments:
 			_, comment_id = encoded_comment.decode().split(":")
@@ -1050,8 +1073,9 @@ def redis_generate_tree_by_parent_thread_id(parent_thread_id, size, count, next_
 				continue
 
 			q.append(comment_id)
-
-			serialized_comment_nodes.append(redis_generate_comment_tree_node(comment_id, response, user_id, seen_users))
+			comment_node = redis_generate_comment_tree_node(comment_id, response, user_id, seen_users, count)
+			comments_map[comment_id] = comment_node
+			serialized_comment_nodes.append(comment_node)
 			size -= 1
 			if size == 0:
 				break
@@ -1059,7 +1083,7 @@ def redis_generate_tree_by_parent_thread_id(parent_thread_id, size, count, next_
 		# serialized_comment_nodes.append("#")
 		comment_breaks_arr.append(len(serialized_comment_nodes) - 1)
 
-	return serialized_comment_nodes, comment_breaks_arr
+	return serialized_comment_nodes, comment_breaks_arr, has_next_page
 
 
 # def redis_get_tree_by_parent_comments_id(roots, size, next_page_start, count, parent_comment_id, user_id, blacklisted_user_ids, hidden_comment_ids):

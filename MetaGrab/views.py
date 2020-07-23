@@ -6,8 +6,8 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.contrib.auth import authenticate, login
 from rest_framework.permissions import IsAuthenticated
-from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer, TokenRefreshSerializer
+from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from django.db import models, connection
 
 from . import redis_helpers
@@ -28,10 +28,17 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
         # data['groups'] = self.user.groups.values_list('name', flat=True)
         return data
 
-
 class MyTokenObtainPairView(TokenObtainPairView):
     serializer_class = MyTokenObtainPairSerializer
 
+# class MyTokenRefreshSerializer(TokenRefreshSerializer):
+#     def validate(self, attrs):
+#         data = super(MyTokenRefreshSerializer, self).validate(attrs)
+#         print(data)
+#         return data
+
+# class MyTokenRefreshView(TokenRefreshView):
+#     serializer_class = MyTokenRefreshSerializer
 
 class GameViewSet(viewsets.ModelViewSet):
     # permission_classes = [IsAuthenticated]
@@ -106,25 +113,26 @@ class GameViewSet(viewsets.ModelViewSet):
     def get_games_at_epoch_time(self, request):
         time_point_in_epoch = int(request.GET['time_point_in_epoch'])
         count = int(request.GET['count'])
-        game_arr, time_scores = redis_helpers.redis_get_game_list_at_epoch_time(time_point_in_epoch, count)
-        return Response({"game_arr": game_arr, "time_scores": time_scores})
+        game_arr, time_scores, has_prev_page, has_next_page = redis_helpers.redis_get_game_list_at_epoch_time(time_point_in_epoch, count)
+        
+        return Response({"game_arr": game_arr, "time_scores": time_scores, "has_prev_page": has_prev_page, "has_next_page": has_next_page})
 
     @action(detail=False, methods=['get'])
     def get_games_before_epoch_time(self, request):
         time_point_in_epoch = int(request.GET['time_point_in_epoch'])
         count = int(request.GET['count'])
-        game_arr, time_scores = redis_helpers.redis_get_game_list_by_before_epoch_time(time_point_in_epoch, count)
+        game_arr, time_scores, has_prev_page = redis_helpers.redis_get_game_list_by_before_epoch_time(time_point_in_epoch, count)
 
-        return Response({"game_arr": game_arr, "time_scores": time_scores})
+        return Response({"game_arr": game_arr, "time_scores": time_scores, "has_prev_page": has_prev_page})
 
     @action(detail=False, methods=['get'])
     def get_games_after_epoch_time(self, request):
         time_point_in_epoch = int(request.GET['time_point_in_epoch'])
         count = int(request.GET['count'])
 
-        game_arr, time_scores = redis_helpers.redis_get_game_list_by_after_epoch_time(time_point_in_epoch, count)
+        game_arr, time_scores, has_next_page = redis_helpers.redis_get_game_list_by_after_epoch_time(time_point_in_epoch, count)
 
-        return Response({"game_arr": game_arr, "time_Scores": time_scores})
+        return Response({"game_arr": game_arr, "time_Scores": time_scores, "has_next_page": has_next_page})
 
 
 class GenreViewSet(viewsets.ModelViewSet):
@@ -174,10 +182,12 @@ class ThreadViewSet(viewsets.ModelViewSet):
         content_string = body['content_string']
         content_attributes = body['content_attributes']
         image_urls = body['image_urls']
+        image_widths = body['image_widths']
+        image_heights = body['image_heights']
         user_id = request.user.id
         user = User.objects.get(pk=user_id)
 
-        new_thread = Thread.create(flair=flair, title=title, content_string=content_string, content_attributes=content_attributes, author=User.objects.get(pk=user_id), forum=forum, image_urls=image_urls)
+        new_thread = Thread.create(flair=flair, title=title, content_string=content_string, content_attributes=content_attributes, author=User.objects.get(pk=user_id), forum=forum, image_urls=image_urls, image_widths=image_widths, image_heights=image_heights)
         new_vote = Vote.create(user, 1, new_thread, None)
 
         new_redis_thread = redis_helpers.redis_insert_thread(new_thread)
@@ -547,6 +557,7 @@ class CommentViewSet(viewsets.ModelViewSet):
 
         new_redis_comment["votes"] = [new_redis_vote]
         new_redis_comment["users"] = [redis_user]
+        new_redis_comment["has_next_page"] = False
 
         # emojis_id_arr, user_ids_arr_per_emoji_dict, emoji_reaction_count_dict, _ = redis_helpers.redis_generate_emojis_response("comment:" + str(new_comment.id), set(), user_id)
         # new_redis_comment["emojis"] = {"emojis_id_arr": emojis_id_arr, "user_ids_arr_per_emoji_dict": user_ids_arr_per_emoji_dict, "emoji_reaction_count_dict": emoji_reaction_count_dict}
@@ -583,6 +594,7 @@ class CommentViewSet(viewsets.ModelViewSet):
 
         new_redis_comment["votes"] = [new_redis_vote]
         new_redis_comment["users"] = [redis_user]
+        new_redis_comment["has_next_page"] = False
         # emojis_id_arr, user_ids_arr_per_emoji_dict, emoji_reaction_count_dict, _ = redis_helpers.redis_generate_emojis_response("comment:" + str(new_child_comment.id), set(), user_id)
         # new_redis_comment["emojis"] = {"emojis_id_arr": emojis_id_arr, "user_ids_arr_per_emoji_dict": user_ids_arr_per_emoji_dict, "emoji_reaction_count_dict": emoji_reaction_count_dict}
 
@@ -599,8 +611,8 @@ class CommentViewSet(viewsets.ModelViewSet):
         blacklisted_user_ids = redis_helpers.redis_get_blacklisted_user_ids_by_user_id(user_id)
         hidden_comment_ids = redis_helpers.redis_get_hidden_comment_ids_by_user_id(user_id)
 
-        serialized_comments, comment_breaks_arr = redis_helpers.redis_generate_tree_by_parent_comment_id(parent_comment_id, size, count, start, user_id, blacklisted_user_ids, hidden_comment_ids)
-        return Response({"comments_response": serialized_comments, "comment_breaks_arr": comment_breaks_arr})
+        serialized_comments, comment_breaks_arr, has_next_page = redis_helpers.redis_generate_tree_by_parent_comment_id(parent_comment_id, size, count, start, user_id, blacklisted_user_ids, hidden_comment_ids)
+        return Response({"comments_response": serialized_comments, "comment_breaks_arr": comment_breaks_arr, "has_next_page": has_next_page})
 
     @action(detail=False, methods=['get'])
     def get_comment_tree_by_thread_id(self, request, pk=None):
@@ -613,8 +625,8 @@ class CommentViewSet(viewsets.ModelViewSet):
         blacklisted_user_ids = redis_helpers.redis_get_blacklisted_user_ids_by_user_id(user_id)
         hidden_comment_ids = redis_helpers.redis_get_hidden_comment_ids_by_user_id(user_id)
 
-        serialized_comments, comment_breaks_arr = redis_helpers.redis_generate_tree_by_parent_thread_id(parent_thread_id, size, count, start, user_id, blacklisted_user_ids, hidden_comment_ids)
-        return Response({"comments_response": serialized_comments, "comment_breaks_arr": comment_breaks_arr})
+        serialized_comments, comment_breaks_arr, has_next_page = redis_helpers.redis_generate_tree_by_parent_thread_id(parent_thread_id, size, count, start, user_id, blacklisted_user_ids, hidden_comment_ids)
+        return Response({"comments_response": serialized_comments, "comment_breaks_arr": comment_breaks_arr, "has_next_page": has_next_page})
 
 
 class UserViewSet(viewsets.ModelViewSet):
@@ -798,6 +810,56 @@ class GroupViewSet(viewsets.ModelViewSet):
 
 class RedisServices(viewsets.GenericViewSet):
     queryset = ""
+
+    @action(detail=False, methods=['get'])
+    def populate_games(self, request, pk=None):
+        import os
+        script_dir = os.path.dirname(__file__)
+
+        rel_path = "../staticfiles/game_data.json"
+        abs_file_path = os.path.join(script_dir, rel_path)
+
+        data = None
+        with open(abs_file_path) as f:
+            data = json.load(f) # deserialises it
+
+        seen_developers = {}
+        seen_genres = {}
+
+        for game in data["games"]:
+            exist_game = None
+            try:
+                exist_game = Game.objects.get(name=game["name"])
+                continue
+            except Game.DoesNotExist:
+                exist_game = None
+
+            developer = None
+            if game["developer"] not in seen_developers:
+                developer, created = Developer.objects.get_or_create(
+                    name=game["developer"],
+                )
+                seen_developers[game["developer"]] = developer
+            else:
+                developer = seen_developers[game["developer"]]
+
+            genre = None
+            if game["genre"] not in seen_genres:
+                genre, created = Genre.objects.get_or_create(
+                    name=game["genre"],
+                    long_name="",
+                )
+                seen_genres[game["genre"]] = genre
+            else:
+                genre = seen_genres[game["genre"]]
+
+            date = datetime.datetime.strptime(game["release_date"], "%Y-%m-%d")
+            last_updated_date = date.now()
+            Game.objects.create(name=game["name"], release_date=date.date(), developer=developer, genre=genre, last_updated=last_updated_date, icon=game["icon"], banner=game["banner"], game_summary=game["game_summary"])
+
+        # data2 = json.dumps(data1) # json formatted string
+        f.close()
+        return Response({"success": True})
 
     @action(detail=False, methods=['get'])
     def migrate_to_redis(self, request, pk=None):
