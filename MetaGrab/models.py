@@ -204,6 +204,10 @@ class UserProfile(models.Model):
     hidden_threads = models.ManyToManyField(Thread)
     hidden_comments = models.ManyToManyField(Comment)
 
+    profile_image_url = models.URLField(max_length=500, default="")
+    profile_image_width = models.IntegerField(default=0)
+    profile_image_height = models.IntegerField(default=0)
+
     def find_followed_games(self):
         return self.followed_games
 

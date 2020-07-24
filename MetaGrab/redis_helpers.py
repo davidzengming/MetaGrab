@@ -127,7 +127,10 @@ def transform_user_to_redis_object(user):
 		"created": convert_datetime_to_unix(user.created),
 		"username": user.user.username,
 		"is_banned": "1" if user.is_banned == True else "0",
-		"banned_until": convert_datetime_to_unix(user.banned_until)
+		"banned_until": convert_datetime_to_unix(user.banned_until),
+		"profile_image_url": user.profile_image_url,
+		"profile_image_width": user.profile_image_width,
+		"profile_image_height": user.profile_image_height
 	}
 
 	return data
@@ -187,7 +190,6 @@ def redis_insert_user(user):
 	conn = get_redis_connection('default')
 	redis_user_object = transform_user_to_redis_object(user)
 	conn.hmset("user:" + str(user.id), redis_user_object)
-
 
 def redis_get_game_list_at_epoch_time(time_point_in_epoch, count):
 	conn = get_redis_connection('default')
@@ -832,7 +834,6 @@ def redis_generate_emojis_response(decoded_prefix, seen_users, user_id):
 
 		user_serializer = []
 		user_response = conn.hgetall("user:" + decoded_author)
-
 		seen_users[decoded_author] = redis_user_serializer(user_response)
 		user_serializer.append(seen_users[decoded_author])
 
@@ -881,7 +882,6 @@ def redis_get_threads_by_game_id(game_id, start, count, user_id, blacklisted_use
 
 		user_serializer = []
 		user_response = conn.hgetall("user:" + decoded_author)
-
 		seen_users[decoded_author] = redis_user_serializer(user_response)
 		user_serializer.append(seen_users[decoded_author])
 		return user_serializer
@@ -917,6 +917,7 @@ def redis_get_threads_by_game_id(game_id, start, count, user_id, blacklisted_use
 		serialized_thread["emojis"] = {"emojis_id_arr": emojis_id_arr, "user_arr_per_emoji_dict": user_arr_per_emoji_dict, "emoji_reaction_count_dict": emoji_reaction_count_dict, "did_react_to_emoji_dict": did_react_to_emoji_dict}
 		serialized_thread["votes"] = get_vote(conn.hget("vote:user:" + str(user_id), decoded_thread))
 		serialized_thread["users"] = get_author(response["author".encode()])
+
 		serializer.append(serialized_thread)
 		
 	return serializer, has_next_page

@@ -23,6 +23,10 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
         data['user_id'] = self.user.id
         data['refresh_exp_date_epoch'] = refresh.payload['exp'] #expire time in epoch
         data['access_exp_date_epoch'] = refresh.access_token.payload['exp']
+
+        data['profile_image_url'] = self.user.userprofile.profile_image_url
+        data['profile_image_width'] = str(self.user.userprofile.profile_image_width)
+        data['profile_image_height'] = str(self.user.userprofile.profile_image_height)
         # Add extra responses here
         # data['user'] = Users.objects.get(pk=self.user.user_id)
         # data['groups'] = self.user.groups.values_list('name', flat=True)
@@ -646,6 +650,24 @@ class UserViewSet(viewsets.ModelViewSet):
 class UserProfileViewSet(viewsets.ModelViewSet):
     queryset = UserProfile.objects.all()
     serializer_class = UserProfileSerializer
+
+    @action(detail=False, methods=['post'])
+    def upload_profile_image(self, request, pk=None):
+        user_id = request.user.id
+        body_unicode = request.body.decode('utf-8') 
+        body = json.loads(body_unicode)
+        profile_image_url = body["profile_image_url"]
+        profile_image_width = body["profile_image_width"]
+        profile_image_height = body["profile_image_height"]
+
+        user = UserProfile.objects.get(pk=user_id)
+        user.profile_image_url = profile_image_url
+        user.profile_image_width = profile_image_width
+        user.profile_image_height= profile_image_height
+        user.save()
+
+        redis_helpers.redis_insert_user(user)
+        return Response({"success": True})
 
     @action(detail=False, methods=['get'])
     def get_blacklisted_user_ids_by_user_id(self, request, pk=None):
