@@ -93,7 +93,9 @@ DATABASES = {
         'USER': 'root',
         'PASSWORD': '',
         'OPTIONS': {
-          'autocommit': True,
+            'autocommit': True,
+            'charset': 'utf8mb4',
+            'use_unicode': True,
         },
     }
 }
