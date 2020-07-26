@@ -838,7 +838,7 @@ class RedisServices(viewsets.GenericViewSet):
         import os
         script_dir = os.path.dirname(__file__)
 
-        rel_path = "../staticfiles/game_data.json"
+        rel_path = "../game_data.json"
         abs_file_path = os.path.join(script_dir, rel_path)
 
         data = None
