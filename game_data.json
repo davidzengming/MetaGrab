@@ -338,6 +338,16 @@
 			"game_summary": "Mafia: Definitive Edition is an upcoming action-adventure video game developed by Hangar 13 and published by 2K Games. A remake of the 2002 video game Mafia, it was announced in May 2020 and is scheduled for release in September 2020 for Microsoft Windows, PlayStation 4 and Xbox One. The game is set within a redesigned version of the fictional city of Lost Heaven (based on Chicago) in the 1930s, and follows the rise and fall of taxi driver-turned-mobster Tommy Angelo within the Salieri crime family.",
 			"developer": "Hanger 13",
 			"genre": "Action"
+		},
+
+		{
+			"name": "Mount and Blade 2: Bannerlord",
+			"release_date": "2020-03-30",
+			"icon": "https://res.cloudinary.com/dzengcdn/image/upload/c_scale,w_300/v1595879467/Mount-Blade-II-Bannerlord-pc-download_vtdsd7.jpg",
+			"banner": "https://res.cloudinary.com/dzengcdn/image/upload/c_scale,w_1200/v1595879512/maxresdefault_x1pktt.jpg",
+			"game_summary": "Mount & Blade II: Bannerlord takes place on the fictional continent of Calradia, 210 years before Mount & Blade: Warband, during the decline of the Calradic Empire and the formation of the predecessors of the factions that appear in Warband.",
+			"developer": "TalesWorld Entertainment",
+			"genre": "Strategy"
 		}
 	]
 }
