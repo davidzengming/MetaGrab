@@ -21,6 +21,7 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
         data['refresh'] = str(refresh)
         data['access'] = str(refresh.access_token)
         data['user_id'] = self.user.id
+        data['email'] = self.user.email
         data['refresh_exp_date_epoch'] = refresh.payload['exp'] #expire time in epoch
         data['access_exp_date_epoch'] = refresh.access_token.payload['exp']
 
